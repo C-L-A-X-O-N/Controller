@@ -1,4 +1,6 @@
-import os, master, node
+import os
+from master import master
+from node import node
 import logging
 logger = logging.getLogger(__name__)
 

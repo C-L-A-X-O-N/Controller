@@ -6,10 +6,27 @@ import sys
 
 logger = logging.getLogger(__name__)
 
+def proxy(topic):
+    def handle(client, message):
+        """Handle incoming lane messages."""
+        client.publish("claxon/"+topic, message)
+
+    return handle
+
+TRACI_TOPICS = {
+    "traci/lane/position": proxy("lane/position"),
+    "traci/traffic_light/position": proxy("traffic_light/position"),
+    "traci/vehicle/position": proxy("vehicle/position"),
+    "traci/traffic_light/state": proxy("traffic_light/state"),
+}
 
 def on_connect(client, userdata, flags, rc):
     """Callback for when the client connects to the broker."""
     logger.info(f"Connected to MQTT broker with result code {rc}")
+
+    for topic in TRACI_TOPICS.keys():
+        client.subscribe(topic)
+        logger.info(f"Subscribed to topic {topic}")
 
 
 def on_disconnect(client, userdata, rc):
@@ -19,6 +36,16 @@ def on_disconnect(client, userdata, rc):
     else:
         logger.info("Disconnected from MQTT broker")
 
+def on_message(client, userdata, msg):
+    """Callback for when a message is received from the broker."""
+    logger.debug(f"Received message on topic {msg.topic}")
+    if msg.topic in TRACI_TOPICS.keys():
+        try:
+            TRACI_TOPICS[msg.topic](client, msg.payload)
+        except Exception as e:
+            logger.error(f"Error handling message on topic {msg.topic}: {e}")
+    else:
+        logger.warning(f"No handler for topic {msg.topic}")
 
 def main(host, port):
     """Main function to run the MQTT node client."""
@@ -33,14 +60,11 @@ def main(host, port):
     signal.signal(signal.SIGINT, signal_handler)
     signal.signal(signal.SIGTERM, signal_handler)
 
-    # MQTT configuration
-    topic = "demo/topic"
-
-    # Setup MQTT client
     client = mqtt.Client()
     client.enable_logger(logger)
     client.on_connect = on_connect
     client.on_disconnect = on_disconnect
+    client.on_message = on_message
 
     try:
         client.connect(host, port, 60)
@@ -48,10 +72,7 @@ def main(host, port):
 
         # Main loop
         while True:
-            message = "Hello MQTT"
-            client.publish(topic, message, qos=1, retain=True)
-            logger.debug(f"Published message: {message}")
-            time.sleep(2)
+            time.sleep(0.1)
 
     except Exception as e:
         logger.error(f"Error in MQTT node: {e}")
