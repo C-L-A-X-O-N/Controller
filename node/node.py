@@ -8,7 +8,6 @@ logger = logging.getLogger(__name__)
 
 def proxy(topic):
     def handle(client, message):
-        """Handle incoming lane messages."""
         client.publish("claxon/"+topic, message)
 
     return handle
@@ -18,6 +17,7 @@ TRACI_TOPICS = {
     "traci/traffic_light/position": proxy("traffic_light/position"),
     "traci/vehicle/position": proxy("vehicle/position"),
     "traci/traffic_light/state": proxy("traffic_light/state"),
+    "claxon/command/get_init": lambda client, message: client.publish("controller/command/get_init", ""),
 }
 
 def on_connect(client, userdata, flags, rc):

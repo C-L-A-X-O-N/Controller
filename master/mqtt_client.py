@@ -9,11 +9,6 @@ from master.websocket_server import broadcast_websocket_message
 
 logger = logging.getLogger(__name__)
 
-def handle_lane_message(client, message):
-    """Gère les messages de la voie."""
-    logger.info(f"Handling lane message")
-    setLanes(json.loads(message))
-
 SUBSCRIBER_TOPICS = {
     "claxon/lane/position": lambda client, msg: setLanes(json.loads(msg)),
     "claxon/traffic_light/position": lambda client, msg: setTrafficLight(json.loads(msg)),
@@ -31,12 +26,14 @@ def setup_mqtt_client(host, port):
         for topic in SUBSCRIBER_TOPICS.keys():
             client.subscribe(topic)
 
+        client.publish("claxon/command/get_init", "")
+
     def on_message(client, userdata, msg):
         logger.info(f"Received message on topic {msg.topic}")
         handled = False
         for topic in SUBSCRIBER_TOPICS.keys():
             if msg.topic == topic:
-                SUBSCRIBER_TOPICS[topic](client, msg.payload.decode())
+                SUBSCRIBER_TOPICS[topic](client, msg.payload)
                 handled = True
 
         if not handled:
