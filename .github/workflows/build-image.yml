@@ -1,0 +1,32 @@
+name: Build Docker Image on Tag
+
+on:
+  push:
+    tags:
+      - '*'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Plutonium Private Registry
+        uses: docker/login-action@v3
+        with:
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+           context: .
+           push: true
+           tags: 
+            ghcr.io/C-L-A-X-O-N/Controller/controller:${{ github.ref_name }}
+            ghcr.io/C-L-A-X-O-N/Controller/controller:latest
