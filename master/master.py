@@ -13,10 +13,12 @@ def main(host, port):
         db_connection = connect_to_database()
 
         # Configuration MQTT
-        mqtt_client = setup_mqtt_client(host, port)
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        
+        mqtt_client = setup_mqtt_client(host, port, loop)
 
-        # Démarrage du serveur WebSocket
-        asyncio.run(start_websocket_server())
+        loop.run_until_complete(start_websocket_server())
     except KeyboardInterrupt:
         logger.info("Shutting down")
     except Exception as e:

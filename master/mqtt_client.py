@@ -9,16 +9,24 @@ from master.websocket_server import broadcast_websocket_message
 
 logger = logging.getLogger(__name__)
 
+def publish_to_websocket(loop, message_type, data, dump_json=False):
+    asyncio.run_coroutine_threadsafe(
+        broadcast_websocket_message(message_type, data, dump_json),
+        loop
+    )
+
 SUBSCRIBER_TOPICS = {
-    "claxon/lane/position": lambda client, msg: setLanes(json.loads(msg)),
-    "claxon/traffic_light/position": lambda client, msg: setTrafficLight(json.loads(msg)),
-    "claxon/traffic_light/state": lambda client, msg: asyncio.run(broadcast_websocket_message("traffic_light/state", json.loads(msg))),
-    "claxon/vehicle/position": lambda client, msg: asyncio.run(broadcast_websocket_message("vehicle", json.loads(msg))),
+    "claxon/lane/position": lambda client, loop, msg: setLanes(json.loads(msg), loop),
+    "claxon/traffic_light/position": lambda client, loop, msg: setTrafficLight(json.loads(msg), loop),
+    "claxon/traffic_light/state": lambda client, loop, msg: publish_to_websocket(loop, "traffic_light/state", msg, True),
+    "claxon/vehicle/position": lambda client, loop, msg: publish_to_websocket(loop, "vehicle", msg, True),
 }
 
-def setup_mqtt_client(host, port):
+def setup_mqtt_client(host, port, loop = None):
     """Configuration et démarrage du client MQTT."""
     client = Client(client_id="master", clean_session=False)
+    if loop is None:
+        loop = asyncio.get_event_loop()
     client.enable_logger(logger)
 
     def on_connect(client, userdata, flags, rc):
@@ -33,7 +41,7 @@ def setup_mqtt_client(host, port):
         handled = False
         for topic in SUBSCRIBER_TOPICS.keys():
             if msg.topic == topic:
-                SUBSCRIBER_TOPICS[topic](client, msg.payload)
+                SUBSCRIBER_TOPICS[topic](client, loop, msg.payload)
                 handled = True
 
         if not handled:

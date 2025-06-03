@@ -6,8 +6,10 @@ import websockets
 logger = logging.getLogger(__name__)
 connected_websockets = set()
 
-async def broadcast_websocket_message(message_type, data):
+async def broadcast_websocket_message(message_type, data, dump_json = False):
     disconnected = set()
+    if dump_json:
+        data = json.loads(data)
     for ws in connected_websockets:
         try:
             await ws.send(json.dumps({
