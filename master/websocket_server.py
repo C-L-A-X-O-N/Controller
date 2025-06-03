@@ -20,6 +20,7 @@ async def broadcast_websocket_message(message_type, data):
 
 async def handle_websocket_connection(websocket):
     from master.lane import getLanes
+    from master.traffic_light import getTrafficLight
 
     """Gestion des connexions WebSocket."""
     logger.info("WebSocket: Client Connected.")
@@ -28,6 +29,10 @@ async def handle_websocket_connection(websocket):
         await websocket.send(json.dumps({
             "type": "lanes/position",
             "data": getLanes()
+        }))
+        await websocket.send(json.dumps({
+            "type": "traffic_light/position",
+            "data": getTrafficLight()
         }))
         logger.debug("WebSocket: Initial lanes sent to client.")
         while True:
