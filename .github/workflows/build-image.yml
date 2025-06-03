@@ -28,6 +28,6 @@ jobs:
         with:
            context: .
            push: true
-           tags: 
+           tags: |
             ghcr.io/C-L-A-X-O-N/Controller/controller:${{ github.ref_name }}
             ghcr.io/C-L-A-X-O-N/Controller/controller:latest
