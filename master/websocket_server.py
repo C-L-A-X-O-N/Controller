@@ -19,23 +19,20 @@ async def broadcast_websocket_message(message_type, data):
     connected_websockets.difference_update(disconnected)
 
 async def handle_websocket_connection(websocket):
+    from master.lane import getLanes
+
     """Gestion des connexions WebSocket."""
     logger.info("WebSocket: Client Connected.")
     try:
         connected_websockets.add(websocket)
+        await websocket.send(json.dumps({
+            "type": "lanes/position",
+            "data": getLanes()
+        }))
+        logger.debug("WebSocket: Initial lanes sent to client.")
         while True:
-            name = await websocket.recv()
-            age = await websocket.recv()
-
-            if not name or not age:
-                logger.error("Error Receiving Value from Client.")
-                break
-
-            logger.info(f"Details Received - Name: {name}, Age: {age}")
-            if int(age) < 18:
-                await websocket.send(f"Sorry! {name}, You can't join the club.")
-            else:
-                await websocket.send(f"Welcome aboard, {name}.")
+            message = await websocket.recv()
+            logger.debug(f"WebSocket: Received message: {message}")
     except websockets.ConnectionClosedError:
         logger.error("WebSocket: Client Disconnected.")
     finally:
@@ -44,5 +41,5 @@ async def handle_websocket_connection(websocket):
 
 async def start_websocket_server():
     """Démarrage du serveur WebSocket."""
-    async with websockets.serve(handle_websocket_connection, "localhost", 7890):
+    async with websockets.serve(handle_websocket_connection, "0.0.0.0", 7890):
         await asyncio.Future()  # run forever

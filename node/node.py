@@ -28,6 +28,9 @@ def on_connect(client, userdata, flags, rc):
         client.subscribe(topic)
         logger.info(f"Subscribed to topic {topic}")
 
+    logger.info("Requesting initial data from traci")
+    client.publish("controller/command/get_init", "")
+
 
 def on_disconnect(client, userdata, rc):
     """Callback for when the client disconnects from the broker."""

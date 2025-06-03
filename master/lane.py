@@ -1,15 +1,15 @@
 from master.websocket_server import broadcast_websocket_message
 import asyncio
 
-traffic_lights = []
+lanes = []
 
 def setLanes(_lanes):
     """Sets the lanes for the current session."""
-    global traffic_lights
+    global lanes
     lanes = _lanes
     asyncio.run(broadcast_websocket_message("lanes/position", lanes))
 
 def getLanes():
     """Returns the lanes for the current session."""
-    global traffic_lights
+    global lanes
     return lanes

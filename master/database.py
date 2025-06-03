@@ -1,13 +1,13 @@
-import logging
+import logging, os
 import psycopg2
 
 logger = logging.getLogger(__name__)
 
 DB_CONFIG = {
-    "dbname": "claxon",
-    "user": "user",
-    "password": "password",
-    "host": "localhost"
+    "dbname": os.environ.get("DB_NAME", "claxon"),
+    "user": os.environ.get("DB_USER", "user"),
+    "password": os.environ.get("DB_PASSWORD", "password"),
+    "host": os.environ.get("DB_HOST", "localhost"),
 }
 
 def connect_to_database():
