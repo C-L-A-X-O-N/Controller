@@ -17,6 +17,7 @@ def publish_to_websocket(loop, message_type, data, dump_json=False):
 
 SUBSCRIBER_TOPICS = {
     "claxon/lane/position": lambda client, loop, msg: setLanes(json.loads(msg), loop),
+    "claxon/lane/state": lambda client, loop, msg: publish_to_websocket(loop, "lane/state", msg, True),
     "claxon/traffic_light/position": lambda client, loop, msg: setTrafficLight(json.loads(msg), loop),
     "claxon/traffic_light/state": lambda client, loop, msg: publish_to_websocket(loop, "traffic_light/state", msg, True),
     "claxon/vehicle/position": lambda client, loop, msg: publish_to_websocket(loop, "vehicle", msg, True),

@@ -14,6 +14,7 @@ def proxy(topic):
 
 TRACI_TOPICS = {
     "traci/lane/position": proxy("lane/position"),
+    "traci/lane/state": proxy("lane/state"),
     "traci/traffic_light/position": proxy("traffic_light/position"),
     "traci/vehicle/position": proxy("vehicle/position"),
     "traci/traffic_light/state": proxy("traffic_light/state"),
