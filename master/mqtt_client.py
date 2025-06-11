@@ -4,6 +4,7 @@ from paho.mqtt.client import Client
 import asyncio
 
 from master.lane import setLanes
+from master.state import setState
 from master.traffic_light import setTrafficLight
 from master.websocket_server import broadcast_websocket_message
 
@@ -21,6 +22,7 @@ SUBSCRIBER_TOPICS = {
     "claxon/traffic_light/position": lambda client, loop, msg: setTrafficLight(json.loads(msg), loop),
     "claxon/traffic_light/state": lambda client, loop, msg: publish_to_websocket(loop, "traffic_light/state", msg, True),
     "claxon/vehicle/position": lambda client, loop, msg: publish_to_websocket(loop, "vehicle", msg, True),
+    "claxon/setting/state": lambda client, loop, msg: setState(json.loads(msg), loop),
 }
 
 def setup_mqtt_client(host, port, loop = None):

@@ -39,6 +39,10 @@ async def handle_websocket_connection(websocket):
         logger.debug("WebSocket: Initial lanes sent to client.")
         while True:
             message = await websocket.recv()
+
+            data = json.loads(message)
+            print(data)
+
             logger.debug(f"WebSocket: Received message: {message}")
     except websockets.ConnectionClosedError:
         logger.error("WebSocket: Client Disconnected.")
