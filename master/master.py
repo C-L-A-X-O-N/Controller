@@ -1,6 +1,7 @@
 import logging
 import asyncio
-from .database import connect_to_database, close_database_connection
+from .database import setup_database
+from .handler import setup_handler
 from .mqtt_client import setup_mqtt_client, close_mqtt_client
 from .websocket_server import start_websocket_server
 
@@ -9,8 +10,9 @@ logger = logging.getLogger(__name__)
 def main(host, port):
     """Point d'entrée principal."""
     try:
-        # Connexion à la base de données
-        db_connection = connect_to_database()
+        logger.info("Starting Claxon Master Controller...")
+        setup_database()
+        setup_handler()
 
         # Configuration MQTT
         loop = asyncio.new_event_loop()
@@ -24,5 +26,5 @@ def main(host, port):
     except Exception as e:
         logger.error(f"Unexpected error: {e}")
     finally:
-        close_mqtt_client(mqtt_client)
-        close_database_connection(db_connection)
+        if mqtt_client:
+            close_mqtt_client(mqtt_client)

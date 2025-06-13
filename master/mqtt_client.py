@@ -1,10 +1,8 @@
-import json
+import json, master.handler
 import logging
 from paho.mqtt.client import Client
 import asyncio
 
-from master.lane import setLanes
-from master.traffic_light import setTrafficLight
 from master.websocket_server import broadcast_websocket_message
 
 logger = logging.getLogger(__name__)
@@ -16,11 +14,11 @@ def publish_to_websocket(loop, message_type, data, dump_json=False):
     )
 
 SUBSCRIBER_TOPICS = {
-    "claxon/lane/position": lambda client, loop, msg: setLanes(json.loads(msg), loop),
-    "claxon/lane/state": lambda client, loop, msg: publish_to_websocket(loop, "lane/state", msg, True),
-    "claxon/traffic_light/position": lambda client, loop, msg: setTrafficLight(json.loads(msg), loop),
-    "claxon/traffic_light/state": lambda client, loop, msg: publish_to_websocket(loop, "traffic_light/state", msg, True),
-    "claxon/vehicle/position": lambda client, loop, msg: publish_to_websocket(loop, "vehicle", msg, True),
+    "claxon/lane/position": lambda client, loop, msg: master.handler.handler.handle_lane_position(loop, json.loads(msg)),
+    "claxon/lane/state": lambda client, loop, msg: master.handler.handler.handle_lane_state(loop, json.loads(msg)),
+    "claxon/traffic_light/position": lambda client, loop, msg: master.handler.handler.handle_lights_position(loop, json.loads(msg)),
+    "claxon/traffic_light/state": lambda client, loop, msg: master.handler.handler.handle_lights_state(loop, json.loads(msg)),
+    "claxon/vehicle/position": lambda client, loop, msg: master.handler.handler.handle_vehicle_position(loop, json.loads(msg)),
 }
 
 def setup_mqtt_client(host, port, loop = None):
@@ -38,15 +36,9 @@ def setup_mqtt_client(host, port, loop = None):
         client.publish("claxon/command/get_init", "")
 
     def on_message(client, userdata, msg):
-        logger.info(f"Received message on topic {msg.topic}")
-        handled = False
         for topic in SUBSCRIBER_TOPICS.keys():
             if msg.topic == topic:
                 SUBSCRIBER_TOPICS[topic](client, loop, msg.payload)
-                handled = True
-
-        if not handled:
-            logger.warning(f"No handler for topic {msg.topic}")
 
 
     client.on_connect = on_connect
