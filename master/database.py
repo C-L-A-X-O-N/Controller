@@ -11,21 +11,24 @@ DB_CONFIG = {
     "async_": False
 }
 
+db = None
+
 def connect_to_database():
+    global db
+    if db is not None:
+        logger.debug("Using existing database connection.")
+        return db
     """Connexion à la base de données."""
     logger.debug("Attempting to connect to the database with config: %s", DB_CONFIG)
     try:
         logger.debug("Connecting to database...")
-        return psycopg2.connect(**DB_CONFIG)
+        db = psycopg2.connect(**DB_CONFIG)
+        db.autocommit = True
+        logger.info("Database connection established successfully.")
+        return db
     except Exception as e:
         logger.error(f"Database connection failed: {e}")
         raise
-
-def close_database_connection(connection):
-    """Fermeture de la connexion à la base de données."""
-    if connection:
-        connection.close()
-        logger.debug("Database connection closed.")
 
 def setup_database():
     """Initialisation de la base de données."""
@@ -63,7 +66,7 @@ def setup_database():
                 in_lane VARCHAR,
                 out_lane VARCHAR,
                 via_lane VARCHAR,
-                state VARCHAR(255) NOT NULL DEFAULT '',
+                state VARCHAR(255) NOT NULL DEFAULT ''
             )            
         """)
         
@@ -71,5 +74,3 @@ def setup_database():
         logger.info("Database setup completed successfully.")
     except Exception as e:
         logger.error(f"Database setup failed: {e}")
-    finally:
-        close_database_connection(connection)
