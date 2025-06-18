@@ -9,6 +9,7 @@ class Session:
     logger = None
     minPos = [None, None]
     maxPos = [None, None]
+    focused = False
 
     def __init__(self, websocket):
         self.websocket = websocket
@@ -38,6 +39,9 @@ class Session:
                 }))
             else:
                 self.logger.error("WebSocket: Frame update message missing required fields.")
+        elif data["type"] == "session/focus":
+            self.focused = data["data"].get("focused", False)
+            self.logger.debug(f"WebSocket: Focus set to {self.focused}.")
 
     async def send(self, message_type, data, dump_json=False):
         try:
@@ -58,8 +62,10 @@ class Session:
 
     def trigger_vehicle_update(self, loop):
         """Trigger an update for the vehicles in this session."""
+        if not self.focused:
+            self.logger.debug("WebSocket: Session not focused, skipping vehicle update.")
+            return
         try:
-            self.logger.debug("WebSocket: Triggering vehicle update.")
             vehicles = []
             if self.minPos[0] is not None and self.maxPos[0] is not None:
                 vehicles = getVehiclesIn(self.minPos[0], self.minPos[1], self.maxPos[0], self.maxPos[1])
@@ -75,8 +81,10 @@ class Session:
         
     def trigger_lane_update(self, loop, updatedData):
         """Trigger an update for the lanes in this session."""
+        if not self.focused:
+            self.logger.debug("WebSocket: Session not focused, skipping lane update.")
+            return
         try:
-            self.logger.debug(f"WebSocket: Triggering lane update (frame: {self.minPos} - {self.maxPos})")
             dataToSend = []
             for lane in updatedData:
                 if self.minPos[0] is not None and self.maxPos[0] is not None:
@@ -96,7 +104,6 @@ class Session:
     def trigger_lane_position(self, loop):
         """Trigger an update for the lanes position in this session."""
         try:
-            self.logger.debug(f"WebSocket: Triggering lane position update (frame: {self.minPos} - {self.maxPos})")
             asyncio.run_coroutine_threadsafe(
                 self.send("lane/position", getLanesIn(self.minPos[0], self.minPos[1], self.maxPos[0], self.maxPos[1]), False),
                 loop
