@@ -4,7 +4,7 @@ from .lane import getLanes, getLanesIndexed
 from .vehicle import getVehicles
 from .traffic_light import getTrafficLight, getTrafficLightIndexed
 import logging, json
-from .session.registry import trigger_vehicles_update
+from .session.registry import trigger_vehicles_update, trigger_lanes_update
 
 class Handler:
     database = None
@@ -59,7 +59,7 @@ class Handler:
                 return None  # Trop court pour faire une ligne
 
             try:
-                points = ", ".join(f"{float(pt[0])} {float(pt[1])}" for pt in shape)
+                points = ", ".join(f"{float(pt[1])} {float(pt[0])}" for pt in shape)
                 return f"MULTILINESTRING(({points}))"
             except (TypeError, ValueError, IndexError):
                 return None
@@ -137,15 +137,13 @@ class Handler:
                     """,
                     (lane['traffic_jam'], lane['id'])
                 )
+                old = lanes[lane['id']]
+                lane['shape'] = old['shape']
                 newData.append(lane)
             self.database.commit()
 
         self.logger.debug("Lane states updated in the database.")
-        publish_to_websocket(
-            loop,
-            "lane/state",
-            newData
-        )
+        trigger_lanes_update(loop, newData)
 
     def handle_lights_position(self, loop, data):
         self.logger.debug(f"Handling traffic light position data")

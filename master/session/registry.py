@@ -1,4 +1,5 @@
 import logging
+from master.lane import getLanesIndexed
 
 sessions = set()
 
@@ -32,4 +33,15 @@ def trigger_vehicles_update(loop):
             session.trigger_vehicle_update(loop)
         except Exception as e:
             session.logger.error(f"Failed to send vehicles update: {e}")
+            remove_session(session)
+
+def trigger_lanes_update(loop, updatedData):
+    """Trigger an update for all sessions."""
+    global sessions
+    logger.debug("Triggering lanes update for all sessions.")
+    for session in sessions:
+        try:
+            session.trigger_lane_update(loop, updatedData)
+        except Exception as e:
+            session.logger.error(f"Failed to send lanes update: {e}")
             remove_session(session)

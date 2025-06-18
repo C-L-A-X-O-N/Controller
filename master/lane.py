@@ -11,7 +11,7 @@ def getLanes():
         for lane in lanes:
             lanesFormatted.append({
                 "id": lane[1],
-                "shape": json.loads(lane[0]).get('coordinates', []),
+                "shape": json.loads(lane[0]).get('coordinates', [])[0],
                 "priority": lane[2],
                 "type": lane[3],
                 "jam": lane[4]
