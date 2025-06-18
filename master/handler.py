@@ -4,6 +4,7 @@ from .lane import getLanes, getLanesIndexed
 from .vehicle import getVehicles
 from .traffic_light import getTrafficLight, getTrafficLightIndexed
 import logging, json
+from .session.registry import trigger_vehicles_update
 
 class Handler:
     database = None
@@ -35,8 +36,8 @@ class Handler:
                     """,
                     (
                         vehicle['id'],
-                        vehicle['position'][0],  # longitude
                         vehicle['position'][1],  # latitude
+                        vehicle['position'][0],  # longitude
                         vehicle.get('type'),
                         vehicle.get('angle'),
                         vehicle.get('speed'),
@@ -48,11 +49,7 @@ class Handler:
 
         self.logger.debug("Vehicle positions updated in the database.")
 
-        publish_to_websocket(
-            loop,
-            "vehicle",
-            getVehicles()
-        )
+        trigger_vehicles_update(loop)
 
     def handle_lane_position(self, loop, data):
         self.logger.debug(f"Handling lane position data")
