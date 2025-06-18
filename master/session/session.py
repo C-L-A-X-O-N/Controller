@@ -1,5 +1,5 @@
 import json, websockets, logging, asyncio
-from master.lane import getLanes
+from master.lane import getLanes, getLanesIn
 from master.traffic_light import getTrafficLight
 from master.session.registry import remove_session
 from master.vehicle import getVehiclesIn, getVehicles
@@ -15,10 +15,6 @@ class Session:
         self.logger = logging.getLogger(__name__ + ":" + str(id(self)))
 
     async def init(self):
-        await self.websocket.send(json.dumps({
-            "type": "lanes/position",
-            "data": getLanes()
-        }))
         await self.websocket.send(json.dumps({
             "type": "traffic_light/position",
             "data": getTrafficLight()
@@ -36,6 +32,10 @@ class Session:
         if data["type"] == "session/frame_update":
             if "minX" in data["data"] and "minY" in data["data"] and "maxX" in data["data"] and "maxY" in data["data"]:
                 self.set_frame(data["data"]["minX"], data["data"]["minY"], data["data"]["maxX"], data["data"]["maxY"])
+                await self.websocket.send(json.dumps({
+                    "type": "lanes/position",
+                    "data": getLanesIn(data["data"]["minX"], data["data"]["minY"], data["data"]["maxX"], data["data"]["maxY"])
+                }))
             else:
                 self.logger.error("WebSocket: Frame update message missing required fields.")
 
@@ -83,18 +83,7 @@ class Session:
                     # lane[shape] is a list of points [[long, lat], ...]
                     shape = lane['shape']
                     del lane['shape']
-                    if not shape or len(shape) < 2:
-                        dataToSend.append(lane)
-                        continue
-
-                    # Check if the lane is within the frame
-                    minX, minY = self.minPos
-                    maxX, maxY = self.maxPos
-                    if maxX < minX:
-                        minX, maxX = maxX, minX
-                    if maxY < minY:
-                        minY, maxY = maxY, minY
-                    if any(minX <= pt[0] <= maxX and minY <= pt[1] <= maxY for pt in shape):
+                    if self.shape_bb_frame(shape):
                         dataToSend.append(lane)
             asyncio.run_coroutine_threadsafe(
                 self.send("lane/state", dataToSend, False),
@@ -103,3 +92,29 @@ class Session:
         except Exception as e:
             self.logger.error(f"WebSocket: Failed to send lanes update: {e}")
             remove_session(self)
+
+    def trigger_lane_position(self, loop):
+        """Trigger an update for the lanes position in this session."""
+        try:
+            self.logger.debug(f"WebSocket: Triggering lane position update (frame: {self.minPos} - {self.maxPos})")
+            asyncio.run_coroutine_threadsafe(
+                self.send("lane/position", getLanesIn(self.minPos[0], self.minPos[1], self.maxPos[0], self.maxPos[1]), False),
+                loop
+            )
+        except Exception as e:
+            self.logger.error(f"WebSocket: Failed to send lanes position: {e}")
+            remove_session(self)
+
+    def shape_bb_frame(self, shape):
+        """Check if the shape is within the bounding box frame."""
+        if not shape or len(shape) < 2:
+            return False
+
+        minX, minY = self.minPos
+        maxX, maxY = self.maxPos
+        if maxX < minX:
+            minX, maxX = maxX, minX
+        if maxY < minY:
+            minY, maxY = maxY, minY
+
+        return any(minX <= pt[0] <= maxX and minY <= pt[1] <= maxY for pt in shape)
