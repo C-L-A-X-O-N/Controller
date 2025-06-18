@@ -47,6 +47,7 @@ def main(host, port):
         "claxon/command/get_init": lambda client, message: client.publish("controller/command/get_init", "{}"),
     }
     try:
+        time.sleep(5)  # Wait for the network to stabilize
         globalBroker = MqttClient(host=host, port=port, subscribes={
             "traci/start": publish_on_start
         }, on_connect=on_connect)
