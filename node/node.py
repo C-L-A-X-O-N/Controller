@@ -11,9 +11,12 @@ def on_connect(client, userdata, flags, rc):
     publish_on_start("", client)
 
 def publish_on_start(msg, client): 
+    host = os.environ.get("EXTERNAL_PERSONNAL_BROKER_HOST", "controller_node")
+    port = int(os.environ.get("EXTERNAL_PERSONNAL_BROKER_PORT", 1883))
+    logger.info(f"Publishing start message to {host}:{port}")
     client.publish("traci/node/start", json.dumps({
-        "host": os.environ.get("PERSONNAL_BROKER_HOST", "localhost"),
-        "port": int(os.environ.get("PERSONNAL_BROKER_PORT", 1883)),
+        "host": host,
+        "port": port,
     }))
 
 def main(host, port):
@@ -49,6 +52,7 @@ def main(host, port):
     try:
         time.sleep(5)  # Wait for the network to stabilize
         globalBroker = MqttClient(host=host, port=port, subscribes={
+            "claxon/command/first_data": lambda client, message: client.publish("traci/first_data", "{}"),
             "traci/start": publish_on_start
         }, on_connect=on_connect)
         specificBroker = MqttClient(

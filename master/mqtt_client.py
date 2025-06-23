@@ -34,6 +34,7 @@ def setup_mqtt_client(host, port, loop = None):
             client.subscribe(topic)
 
         client.publish("claxon/command/get_init", "")
+        client.publish("claxon/command/first_data", "")
 
     def on_message(client, userdata, msg):
         for topic in SUBSCRIBER_TOPICS.keys():

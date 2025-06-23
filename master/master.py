@@ -9,6 +9,7 @@ logger = logging.getLogger(__name__)
 
 def main(host, port):
     """Point d'entrée principal."""
+    mqtt_client = None
     try:
         logger.info("Starting Claxon Master Controller...")
         setup_database()
@@ -26,5 +27,5 @@ def main(host, port):
     except Exception as e:
         logger.error(f"Unexpected error: {e}")
     finally:
-        if mqtt_client:
+        if mqtt_client != None:
             close_mqtt_client(mqtt_client)

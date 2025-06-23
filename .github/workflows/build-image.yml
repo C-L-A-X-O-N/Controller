@@ -1,4 +1,4 @@
-name: Build Docker Image on Tag
+name: Build Docker Images on Tag
 
 on:
   push:
@@ -6,7 +6,8 @@ on:
       - '*'
 
 jobs:
-  build:
+  master:
+    name: Build and Push Master Docker Image
     runs-on: ubuntu-latest
 
     steps:
@@ -27,7 +28,36 @@ jobs:
         uses: docker/build-push-action@v5
         with:
            context: .
+           file: Dockerfile.master
            push: true
            tags: |
-            ghcr.io/c-l-a-x-o-n/controller/controller:${{ github.ref_name }}
-            ghcr.io/c-l-a-x-o-n/controller/controller:latest
+            ghcr.io/c-l-a-x-o-n/controller/master:${{ github.ref_name }}
+            ghcr.io/c-l-a-x-o-n/controller/master:latest
+
+  node:
+    name: Build and Push Node Docker Image
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR.io
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+           context: .
+           file: Dockerfile.node
+           push: true
+           tags: |
+            ghcr.io/c-l-a-x-o-n/controller/node:${{ github.ref_name }}
+            ghcr.io/c-l-a-x-o-n/controller/node:latest

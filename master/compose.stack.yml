@@ -1,0 +1,47 @@
+services:
+  postgres:
+    image: postgis/postgis:16-3.4
+    environment:
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: claxon
+    ports:
+      - "5432:5432"
+    deploy:
+      replicas: 1
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "user"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - controller
+    
+  controller_master:
+    image: ghcr.io/c-l-a-x-o-n/controller/master:latest
+    environment:
+      BROKER_HOST: mosquitto
+      BROKER_PORT: 1883
+      MASTER: "True"
+      DB_HOST: postgres
+      DB_USER: user
+      DB_PASSWORD: password
+      DB_NAME: claxon
+    ports:
+      - "7900:7900"
+    volumes:
+      - ../:/app
+    restart: always
+    deploy:
+      replicas: 1
+    networks:
+      - controller
+      - backstack
+
+networks:
+  backstack:
+    external: true
+    name: backstack_network
+  controller:
+    driver: overlay
+    name: controller_network

@@ -1,0 +1,22 @@
+services:
+  controller_node:
+    image: ghcr.io/c-l-a-x-o-n/controller/node:latest
+    environment:
+      BROKER_HOST: mosquitto
+      BROKER_PORT: 1883
+      PERSONNAL_BROKER_HOST: localhost
+      PERSONNAL_BROKER_PORT: 1883
+      EXTERNAL_PERSONNAL_BROKER_HOST: controller_node
+      EXTERNAL_PERSONNAL_BROKER_PORT: 1883
+    volumes:
+      - ../:/app
+    networks:
+      - backstack
+      - node
+
+networks:
+  backstack:
+    external: true
+    name: backstack_network
+  node:
+    driver: overlay

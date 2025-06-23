@@ -29,5 +29,5 @@ async def handle_websocket_connection(websocket):
 
 async def start_websocket_server():
     """Démarrage du serveur WebSocket."""
-    async with websockets.serve(handle_websocket_connection, "0.0.0.0", 7890):
+    async with websockets.serve(handle_websocket_connection, "0.0.0.0", 7900):
         await asyncio.Future()  # run forever
