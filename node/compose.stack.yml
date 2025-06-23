@@ -8,6 +8,7 @@ services:
       PERSONNAL_BROKER_PORT: 1883
       EXTERNAL_PERSONNAL_BROKER_HOST: controller_node
       EXTERNAL_PERSONNAL_BROKER_PORT: 1883
+      ZONE: 1
     volumes:
       - ../:/app
     networks:

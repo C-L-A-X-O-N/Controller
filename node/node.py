@@ -17,6 +17,7 @@ def publish_on_start(msg, client):
     client.publish("traci/node/start", json.dumps({
         "host": host,
         "port": port,
+        "zone": os.environ.get("ZONE", 1),
     }))
 
 def main(host, port):

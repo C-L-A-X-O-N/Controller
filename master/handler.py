@@ -163,8 +163,8 @@ class Handler:
                     """,
                     (
                         light['id'],
-                        light.get('stop_lon'),
-                        light.get('stop_lat'),
+                        light.get('position')[1],
+                        light.get('position')[0],
                         light.get('in_lane'),
                         light.get('out_lane'),
                         light.get('via_lane')
