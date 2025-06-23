@@ -8,9 +8,12 @@ services:
       PERSONNAL_BROKER_PORT: 1883
       EXTERNAL_PERSONNAL_BROKER_HOST: controller_node
       EXTERNAL_PERSONNAL_BROKER_PORT: 1883
-      ZONE: 1
+    deploy:
+      mode: replicated
+      replicas: 9
     volumes:
       - ../:/app
+      - /var/run/docker.sock:/var/run/docker.sock
     networks:
       - backstack
       - node

@@ -45,6 +45,7 @@ def setup_database():
                 type VARCHAR(50),
                 angle FLOAT,
                 speed FLOAT,
+                zone INTEGER DEFAULT 0,
                 accident BOOLEAN DEFAULT FALSE
             );
         """)
@@ -55,6 +56,7 @@ def setup_database():
                 geom GEOMETRY(MultiLineString, 4326),
                 priority INTEGER,
                 type VARCHAR(255),
+                zone INTEGER DEFAULT 0,
                 jam FLOAT NOT NULL DEFAULT 0.0
             );
         """)
@@ -66,6 +68,7 @@ def setup_database():
                 in_lane VARCHAR,
                 out_lane VARCHAR,
                 via_lane VARCHAR,
+                zone INTEGER DEFAULT 0,
                 state VARCHAR(255) NOT NULL DEFAULT ''
             )            
         """)

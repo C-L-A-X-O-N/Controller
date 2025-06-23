@@ -17,7 +17,7 @@ def publish_on_start(msg, client):
     client.publish("traci/node/start", json.dumps({
         "host": host,
         "port": port,
-        "zone": os.environ.get("ZONE", 1),
+        "zone": os.environ.get("ZONE", 2),
     }))
 
 def main(host, port):
@@ -38,9 +38,16 @@ def main(host, port):
 
     def proxy(topic):
         def handle(message, client):
-            globalBroker.publish("claxon/"+topic, message)
+            json_message = json.loads(message)
+            data = {
+                "data": json_message, 
+                "zone": os.environ.get("ZONE", 2)
+            }
+            globalBroker.publish("claxon/"+topic, json.dumps(data))
 
         return handle
+    
+    logger.info(f"Starting Node in zone {os.environ.get('ZONE', 2)} with host {host} and port {port}")
 
     TRACI_TOPICS = {
         "traci/lane/position": proxy("lane/position"),
@@ -48,12 +55,11 @@ def main(host, port):
         "traci/traffic_light/position": proxy("traffic_light/position"),
         "traci/vehicle/position": proxy("vehicle/position"),
         "traci/traffic_light/state": proxy("traffic_light/state"),
-        "claxon/command/get_init": lambda client, message: client.publish("controller/command/get_init", "{}"),
     }
     try:
         time.sleep(5)  # Wait for the network to stabilize
         globalBroker = MqttClient(host=host, port=port, subscribes={
-            "claxon/command/first_data": lambda client, message: client.publish("traci/first_data", "{}"),
+            "claxon/command/first_data": lambda message, client: globalBroker.publish("traci/first_data", "{}"),
             "traci/start": publish_on_start
         }, on_connect=on_connect)
         specificBroker = MqttClient(

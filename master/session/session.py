@@ -1,6 +1,6 @@
 import json, websockets, logging, asyncio
 from master.lane import getLanes, getLanesIn
-from master.traffic_light import getTrafficLight
+from master.traffic_light import getTrafficLight, getTrafficLightIn
 from master.session.registry import remove_session
 from master.vehicle import getVehiclesIn, getVehicles
 
@@ -42,6 +42,12 @@ class Session:
         elif data["type"] == "session/focus":
             self.focused = data["data"].get("focused", False)
             self.logger.debug(f"WebSocket: Focus set to {self.focused}.")
+        elif data["type"] == "session/update_vehicles":
+            loop = asyncio.get_event_loop()
+            self.trigger_vehicle_update(loop)
+        elif data["type"] == "session/update_lights":
+            loop = asyncio.get_event_loop()
+            self.trigger_lights_update(loop)
 
     async def send(self, message_type, data, dump_json=False):
         try:
@@ -111,6 +117,26 @@ class Session:
         except Exception as e:
             self.logger.error(f"WebSocket: Failed to send lanes position: {e}")
             remove_session(self)
+
+    def trigger_lights_update(self, loop):
+        """Trigger an update for the lights in this session."""
+        if not self.focused:
+            self.logger.debug("WebSocket: Session not focused, skipping lights update.")
+            return
+        try:
+            lights = []
+            if self.minPos[0] is not None and self.maxPos[0] is not None:
+                lights = getTrafficLightIn(self.minPos[0], self.minPos[1], self.maxPos[0], self.maxPos[1])
+            else:
+                lights = getTrafficLight()
+            asyncio.run_coroutine_threadsafe(
+                self.send("traffic_light/state", lights, False),
+                loop
+            )
+        except Exception as e:
+            self.logger.error(f"WebSocket: Failed to send vehicles update: {e}")
+            remove_session(self)
+
 
     def shape_bb_frame(self, shape):
         """Check if the shape is within the bounding box frame."""

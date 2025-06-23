@@ -1,8 +1,7 @@
 from .database import connect_to_database
 from .mqtt_client import publish_to_websocket
-from .lane import getLanes, getLanesIndexed
-from .vehicle import getVehicles
-from .traffic_light import getTrafficLight, getTrafficLightIndexed
+from .lane import getLanesIndexed
+from .traffic_light import getTrafficLightIndexed
 import logging, json
 from .session.registry import trigger_vehicles_update, trigger_lanes_update, trigger_lanes_position
 
@@ -19,20 +18,23 @@ class Handler:
         with self.database.cursor() as cursor:
             cursor.execute(
                 """
-                TRUNCATE TABLE vehicles;
-                """
+                DELETE FROM vehicles WHERE zone = %s;
+                """, [
+                    data.get("zone", 0)
+                ]
             )
-            for vehicle in data:
+            for vehicle in data.get("data", []):
                 cursor.execute(
                     """
-                    INSERT INTO vehicles (id, geom, type, angle, speed, accident)
-                    VALUES (%s, ST_SetSRID(ST_MakePoint(%s, %s), 4326), %s, %s, %s, %s)
+                    INSERT INTO vehicles (id, geom, type, angle, speed, accident, zone)
+                    VALUES (%s, ST_SetSRID(ST_MakePoint(%s, %s), 4326), %s, %s, %s, %s, %s)
                     ON CONFLICT (id) DO UPDATE SET
                         geom = EXCLUDED.geom,
                         type = EXCLUDED.type,
                         angle = EXCLUDED.angle,
                         speed = EXCLUDED.speed,
-                        accident = EXCLUDED.accident
+                        accident = EXCLUDED.accident,
+                        zone = EXCLUDED.zone
                     """,
                     (
                         vehicle['id'],
@@ -41,15 +43,14 @@ class Handler:
                         vehicle.get('type'),
                         vehicle.get('angle'),
                         vehicle.get('speed'),
-                        vehicle.get('accident', False)
+                        vehicle.get('accident', False),
+                        data.get("zone", 0)
                     )
                 )
 
             self.database.commit()
 
         self.logger.debug("Vehicle positions updated in the database.")
-
-        trigger_vehicles_update(loop)
 
     def handle_lane_position(self, loop, data):
         self.logger.debug(f"Handling lane position data")
@@ -66,7 +67,7 @@ class Handler:
 
         lanes = getLanesIndexed()
         with self.database.cursor() as cursor:
-            for lane in data:
+            for lane in data["data"]:
                 wkt_shape = to_wkt_multilinestring(lane['shape'])
                 if wkt_shape == "MULTILINESTRING(())":
                     continue 
@@ -75,8 +76,8 @@ class Handler:
                 if lane['id'] not in lanes:
                     cursor.execute(
                         """
-                        INSERT INTO lanes (id, geom, priority, type)
-                        VALUES (%s, ST_SetSRID(ST_GeomFromText(%s), 4326), %s, %s)
+                        INSERT INTO lanes (id, geom, priority, type, zone)
+                        VALUES (%s, ST_SetSRID(ST_GeomFromText(%s), 4326), %s, %s, %s)
                         """,
                         # ON CONFLICT (id) DO UPDATE SET
                         #     geom = EXCLUDED.geom,
@@ -87,7 +88,8 @@ class Handler:
                             lane['id'],
                             wkt_shape,
                             lane.get('priority', 0),
-                            lane.get('type')
+                            lane.get('type'),
+                            data.get("zone", 0)
                         )
                     )
                 else:
@@ -119,9 +121,8 @@ class Handler:
         # save/replace in the database
         newData = []
         with self.database.cursor() as cursor:
-            for lane in data:
+            for lane in data["data"]:
                 if lane['id'] not in lanes:
-                    self.logger.warning(f"Lane {lane['id']} not found in database, skipping update.")
                     continue
                 # Check if lane state has changed
                 if lane['traffic_jam'] == lanes[lane['id']]['jam']:
@@ -147,19 +148,22 @@ class Handler:
         with self.database.cursor() as cursor:
             cursor.execute(
                 """
-                TRUNCATE TABLE traffic_lights;
-                """
+                DELETE FROM traffic_lights WHERE zone = %s;
+                """, [
+                    data.get("zone", 0)
+                ]
             )
-            for light in data:
+            for light in data["data"]:
                 cursor.execute(
                     """
-                    INSERT INTO traffic_lights (id, geom, in_lane, out_lane, via_lane)
-                    VALUES (%s, ST_SetSRID(ST_MakePoint(%s, %s), 4326), %s, %s, %s)
+                    INSERT INTO traffic_lights (id, geom, in_lane, out_lane, via_lane, zone)
+                    VALUES (%s, ST_SetSRID(ST_MakePoint(%s, %s), 4326), %s, %s, %s, %s)
                     ON CONFLICT (id) DO UPDATE SET
                         geom = EXCLUDED.geom,
                         in_lane = EXCLUDED.in_lane,
                         out_lane = EXCLUDED.out_lane,
-                        via_lane = EXCLUDED.via_lane
+                        via_lane = EXCLUDED.via_lane,
+                        zone = EXCLUDED.zone
                     """,
                     (
                         light['id'],
@@ -167,7 +171,8 @@ class Handler:
                         light.get('position')[0],
                         light.get('in_lane'),
                         light.get('out_lane'),
-                        light.get('via_lane')
+                        light.get('via_lane'),
+                        data.get("zone", 0)
                     )
                 )
 
@@ -177,7 +182,7 @@ class Handler:
         publish_to_websocket(
             loop,
             "traffic_light/position",
-            data
+            data.get("data", [])
         )
 
     def handle_lights_state(self, loop, data):
@@ -185,7 +190,7 @@ class Handler:
         # save/replace in the database
         lights = getTrafficLightIndexed()
         with self.database.cursor() as cursor:
-            for light in data:
+            for light in data["data"]:
                 if light['id'] not in lights:
                     # self.logger.warning(f"Traffic light {light['id']} not found in database, skipping update.")
                     continue
@@ -198,11 +203,6 @@ class Handler:
             self.database.commit()
 
         self.logger.debug("Traffic light states updated in the database.")
-        publish_to_websocket(
-            loop,
-            "traffic_light/state",
-            data
-        )
 
 handler = None
 
