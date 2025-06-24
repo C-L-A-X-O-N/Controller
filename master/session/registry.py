@@ -28,7 +28,8 @@ def trigger_vehicles_update(loop):
     """Trigger an update for all sessions."""
     global sessions
     logger.debug("Triggering vehicles update for all sessions.")
-    for session in sessions:
+    sess = sessions.copy()  # Create a copy to avoid modifying the set during iteration
+    for session in sess:
         try:
             session.trigger_vehicle_update(loop)
         except Exception as e:
@@ -39,7 +40,8 @@ def trigger_lanes_update(loop, updatedData):
     """Trigger an update for all sessions."""
     global sessions
     logger.debug("Triggering lanes update for all sessions.")
-    for session in sessions:
+    sess = sessions.copy()  # Create a copy to avoid modifying the set during iteration
+    for session in sess:
         try:
             session.trigger_lane_update(loop, updatedData)
         except Exception as e:
@@ -50,7 +52,8 @@ def trigger_lanes_position(loop):
     """Trigger an update for all sessions."""
     global sessions
     logger.debug("Triggering lanes position update for all sessions.")
-    for session in sessions:
+    sess = sessions.copy()  # Create a copy to avoid modifying the set during iteration
+    for session in sess:
         try:
             session.trigger_lane_position(loop)
         except Exception as e:

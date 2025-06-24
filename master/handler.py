@@ -23,6 +23,7 @@ class Handler:
         vehicles = self.vehicleCache.getCached()
         with self.database.cursor() as cursor:
             vehiclesPresent = set()
+            zone = data.get("zone", 0)
             for vehicle in data.get("data", []):
                 vehiclesPresent.add(vehicle['id'])
                 if vehicle['id'] not in vehicles:
@@ -99,9 +100,9 @@ class Handler:
                 if vehicle_id not in vehiclesPresent:
                     cursor.execute(
                         """
-                        DELETE FROM vehicles WHERE id = %s
+                        DELETE FROM vehicles WHERE id = %s AND zone = %s
                         """,
-                        (vehicle_id,)
+                        (vehicle_id, zone)
                     )
                     del vehicles[vehicle_id]
             self.database.commit()
@@ -153,7 +154,7 @@ class Handler:
                     lanes[lane['id']] = lane
                 else:
                     # check if the lane shape has changed
-                    if lanes[lane['id']]['shape'] == lane['shape']:
+                    if "shape" in lanes[lane['id']] and lanes[lane['id']]['shape'] == lane['shape']:
                         # self.logger.debug(f"No change in lane {lane['id']}, skipping update.")
                         continue
                     cursor.execute(
@@ -196,7 +197,8 @@ class Handler:
                     (lane['traffic_jam'], lane['id'])
                 )
                 old = lanes[lane['id']]
-                lane['shape'] = old['shape']
+                if "shape" not in lane and "shape" in old:
+                    lane['shape'] = old['shape']
                 lane['jam'] = lane['traffic_jam']
                 lanes[lane['id']] = lane
                 newData.append(lane)

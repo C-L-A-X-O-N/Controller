@@ -88,12 +88,12 @@ class Session:
     def trigger_lane_update(self, loop, updatedData):
         """Trigger an update for the lanes in this session."""
         if not self.focused:
-            self.logger.debug("WebSocket: Session not focused, skipping lane update.")
+            # self.logger.warning("WebSocket: Session not focused, skipping lane update.")
             return
         try:
             dataToSend = []
             for lane in updatedData:
-                if self.minPos[0] is not None and self.maxPos[0] is not None:
+                if self.minPos[0] is not None and self.maxPos[0] is not None and "shape" in lane:
                     # lane[shape] is a list of points [[long, lat], ...]
                     shape = lane['shape']
                     del lane['shape']
