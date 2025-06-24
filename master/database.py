@@ -21,7 +21,7 @@ def connect_to_database():
     """Connexion à la base de données."""
     logger.debug("Attempting to connect to the database with config: %s", DB_CONFIG)
     try:
-        logger.debug("Connecting to database...")
+        logger.info("Connecting to database...")
         db = psycopg2.connect(**DB_CONFIG)
         db.autocommit = True
         logger.info("Database connection established successfully.")
@@ -35,7 +35,7 @@ def setup_database():
     try:
         connection = connect_to_database()
         cursor = connection.cursor()
-        logger.debug("Creating tables if they do not exist...")
+        logger.info("Creating tables if they do not exist...")
         
         # Création des tables si elles n'existent pas
         cursor.execute("""
