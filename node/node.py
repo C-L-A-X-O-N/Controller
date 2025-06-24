@@ -220,13 +220,8 @@ def main(host, port):
 
     def handle_set_traffic_light_state(message):
         try:
-            payload = json.loads(message)
-            light_id = payload.get("id")
-            new_state = payload.get("state")
-            if light_id and new_state:
-                logger.info(f"Changing traffic light {light_id} to state {new_state}")
-                traci.trafficlight.setRedYellowGreenState(light_id, new_state)
-            else:
-                logger.warning("Invalid traffic light state command payload")
+            payload = json.loads(message.payload.decode())
+            logger.info(f"Forwarding traffic light command to TraCI: {payload}")
+            specificBroker.publish("traci/traffic_light/set_state", payload)
         except Exception as e:
-            logger.error(f"Failed to handle traffic light state command: {e}")
+            logger.error(f"Failed to forward traffic light state command: {e}")
