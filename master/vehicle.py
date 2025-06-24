@@ -1,6 +1,18 @@
 from master.database import connect_to_database
 import json
 
+class VehicleCache:
+    vehicles = {}
+
+    def __init__(self):
+        self.vehicles = getVehiclesIndexed()
+
+    def getCached(self):
+        return self.vehicles
+    
+    def setCached(self, vehicles):
+        self.vehicles = vehicles
+
 def getVehicles():
     vehiclesFormatted = []
     db = connect_to_database()

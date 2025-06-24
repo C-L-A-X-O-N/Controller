@@ -1,6 +1,21 @@
 from master.database import connect_to_database
 import json
 
+class LaneCache:
+    lanes = {}
+
+    def __init__(self):
+        self.lanes = getLanesIndexed()
+
+    def getCached(self):
+        return self.lanes
+    
+    def setCached(self, lanes):
+        self.lanes = lanes
+    
+
+
+
 def getLanes():
     """Returns the lanes for the current session."""
     lanesFormatted = []

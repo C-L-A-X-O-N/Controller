@@ -1,6 +1,7 @@
 from .database import connect_to_database
 from .mqtt_client import publish_to_websocket
-from .lane import getLanesIndexed
+from .lane import getLanesIndexed, LaneCache
+from .vehicle import VehicleCache
 from .traffic_light import getTrafficLightIndexed
 import logging, json
 from .session.registry import trigger_vehicles_update, trigger_lanes_update, trigger_lanes_position
@@ -8,47 +9,103 @@ from .session.registry import trigger_vehicles_update, trigger_lanes_update, tri
 class Handler:
     database = None
     logger = None
+    laneCache = None
+    vehicleCache = None
 
     def __init__(self):   
         self.database = connect_to_database()
+        self.laneCache = LaneCache()
+        self.vehicleCache = VehicleCache()
         self.logger = logging.getLogger(__name__)
 
     def handle_vehicle_position(self, loop, data):
         self.logger.debug(f"Handling vehicle position")
+        vehicles = self.vehicleCache.getCached()
         with self.database.cursor() as cursor:
-            cursor.execute(
-                """
-                DELETE FROM vehicles WHERE zone = %s;
-                """, [
-                    data.get("zone", 0)
-                ]
-            )
+            vehiclesPresent = set()
             for vehicle in data.get("data", []):
-                cursor.execute(
-                    """
-                    INSERT INTO vehicles (id, geom, type, angle, speed, accident, zone)
-                    VALUES (%s, ST_SetSRID(ST_MakePoint(%s, %s), 4326), %s, %s, %s, %s, %s)
-                    ON CONFLICT (id) DO UPDATE SET
-                        geom = EXCLUDED.geom,
-                        type = EXCLUDED.type,
-                        angle = EXCLUDED.angle,
-                        speed = EXCLUDED.speed,
-                        accident = EXCLUDED.accident,
-                        zone = EXCLUDED.zone
-                    """,
-                    (
-                        vehicle['id'],
-                        vehicle['position'][1],  # latitude
-                        vehicle['position'][0],  # longitude
-                        vehicle.get('type'),
-                        vehicle.get('angle'),
-                        vehicle.get('speed'),
-                        vehicle.get('accident', False),
-                        data.get("zone", 0)
+                vehiclesPresent.add(vehicle['id'])
+                if vehicle['id'] not in vehicles:
+                    cursor.execute(
+                        """
+                        INSERT INTO vehicles (id, geom, type, angle, speed, accident, zone)
+                        VALUES (%s, ST_SetSRID(ST_MakePoint(%s, %s), 4326), %s, %s, %s, %s, %s)
+                        ON CONFLICT (id) DO UPDATE SET
+                            geom = EXCLUDED.geom,
+                            type = EXCLUDED.type,
+                            angle = EXCLUDED.angle,
+                            speed = EXCLUDED.speed,
+                            accident = EXCLUDED.accident,
+                            zone = EXCLUDED.zone
+                        """,
+                        (
+                            vehicle['id'],
+                            vehicle['position'][1],  # latitude
+                            vehicle['position'][0],  # longitude
+                            vehicle.get('type'),
+                            vehicle.get('angle'),
+                            vehicle.get('speed'),
+                            vehicle.get('accident', False),
+                            data.get("zone", 0)
+                        )
                     )
-                )
+                    vehicles[vehicle['id']] = {
+                        "id": vehicle['id'],
+                        "position": [vehicle['position'][1], vehicle['position'][0]],
+                        "type": vehicle.get('type'),
+                        "angle": vehicle.get('angle'),
+                        "speed": vehicle.get('speed'),
+                        "accident": vehicle.get('accident', False),
+                        "zone": data.get("zone", 0)
+                    }
+                else:
+                    # Check if the vehicle position has changed
+                    old_vehicle = vehicles[vehicle['id']]
+                    if (old_vehicle['position'] == [vehicle['position'][1], vehicle['position'][0]] and
+                        old_vehicle['type'] == vehicle.get('type') and
+                        old_vehicle['angle'] == vehicle.get('angle') and
+                        old_vehicle['speed'] == vehicle.get('speed') and
+                        old_vehicle['accident'] == vehicle.get('accident', False)):
+                        # self.logger.debug(f"No change in vehicle {vehicle['id']}, skipping update.")
+                        continue
+                    
+                    cursor.execute(
+                        """
+                        UPDATE vehicles SET geom = ST_SetSRID(ST_MakePoint(%s, %s), 4326), type = %s, angle = %s, speed = %s, accident = %s, zone = %s WHERE id = %s
+                        """,
+                        (
+                            vehicle['position'][1],  # latitude
+                            vehicle['position'][0],  # longitude
+                            vehicle.get('type'),
+                            vehicle.get('angle'),
+                            vehicle.get('speed'),
+                            vehicle.get('accident', False),
+                            data.get("zone", 0),
+                            vehicle['id']
+                        )
+                    )
+                    vehicles[vehicle['id']] = {
+                        "id": vehicle['id'],
+                        "position": [vehicle['position'][1], vehicle['position'][0]],
+                        "type": vehicle.get('type'),
+                        "angle": vehicle.get('angle'),
+                        "speed": vehicle.get('speed'),
+                        "accident": vehicle.get('accident', False),
+                        "zone": data.get("zone", 0)
+                    }
 
+            # Remove vehicles that are no longer present
+            for vehicle_id in list(vehicles.keys()):
+                if vehicle_id not in vehiclesPresent:
+                    cursor.execute(
+                        """
+                        DELETE FROM vehicles WHERE id = %s
+                        """,
+                        (vehicle_id,)
+                    )
+                    del vehicles[vehicle_id]
             self.database.commit()
+            self.vehicleCache.setCached(vehicles)
 
         self.logger.debug("Vehicle positions updated in the database.")
 
@@ -65,9 +122,10 @@ class Handler:
             except (TypeError, ValueError, IndexError):
                 return None
 
-        lanes = getLanesIndexed()
+        lanes = self.laneCache.getCached()
         with self.database.cursor() as cursor:
             for lane in data["data"]:
+                lane['jam'] = 0
                 wkt_shape = to_wkt_multilinestring(lane['shape'])
                 if wkt_shape == "MULTILINESTRING(())":
                     continue 
@@ -92,6 +150,7 @@ class Handler:
                             data.get("zone", 0)
                         )
                     )
+                    lanes[lane['id']] = lane
                 else:
                     # check if the lane shape has changed
                     if lanes[lane['id']]['shape'] == lane['shape']:
@@ -108,8 +167,10 @@ class Handler:
                             lane['id']
                         )
                     )
+                    lanes[lane['id']] = lane
 
             self.database.commit()
+            self.laneCache.setCached(lanes)
 
         self.logger.debug("Lane positions updated in the database.")
 
@@ -117,7 +178,7 @@ class Handler:
 
     def handle_lane_state(self, loop, data):
         self.logger.debug(f"Handling lane state data")
-        lanes = getLanesIndexed()
+        lanes = self.laneCache.getCached()
         # save/replace in the database
         newData = []
         with self.database.cursor() as cursor:
@@ -136,8 +197,11 @@ class Handler:
                 )
                 old = lanes[lane['id']]
                 lane['shape'] = old['shape']
+                lane['jam'] = lane['traffic_jam']
+                lanes[lane['id']] = lane
                 newData.append(lane)
             self.database.commit()
+            self.laneCache.setCached(lanes)
 
         self.logger.debug("Lane states updated in the database.")
         trigger_lanes_update(loop, newData)
