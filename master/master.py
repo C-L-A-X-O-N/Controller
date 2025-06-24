@@ -13,13 +13,16 @@ def main(host, port):
     try:
         logger.info("Starting Claxon Master Controller...")
         setup_database()
-        setup_handler()
+
 
         # Configuration MQTT
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
-        
+
         mqtt_client = setup_mqtt_client(host, port, loop)
+        from . import mqtt_client as mqtt_module  # ← on importe le module pour y écrire dedans
+
+        setup_handler()
 
         loop.run_until_complete(start_websocket_server())
     except KeyboardInterrupt:

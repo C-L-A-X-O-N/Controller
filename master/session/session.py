@@ -65,6 +65,17 @@ class Session:
             loop = asyncio.get_event_loop()
             self.trigger_accidents_update(loop)
 
+        elif data["type"] == "traffic_light/set_state":
+            light_id = data["data"].get("id")
+            new_state = data["data"].get("state")
+
+            if not light_id or not new_state:
+                self.logger.warning("Missing 'id' or 'state'")
+                return
+
+            from master.handler import handler
+            handler.send_traffic_light_state_command(light_id, new_state)
+
     async def send(self, message_type, data, dump_json=False):
         try:
             if dump_json:

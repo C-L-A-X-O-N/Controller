@@ -355,6 +355,19 @@ class Handler:
             
             self.database.commit()
 
+    def send_traffic_light_state_command(self, light_id, new_state):
+        from master.mqtt_client import mqtt_client
+        if not mqtt_client:
+            self.logger.error("MQTT client is not initialized")
+            return
+        topic = "controller/command/traffic_light/set_state"
+        payload = json.dumps({
+            "id": light_id,
+            "state": new_state
+        })
+        self.logger.info(f"Publishing MQTT command: {topic} → {payload}")
+        mqtt_client.publish(topic, payload)
+
 handler = None
 
 def setup_handler():
