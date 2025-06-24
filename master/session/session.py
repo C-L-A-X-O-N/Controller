@@ -39,9 +39,17 @@ class Session:
                 }))
             else:
                 self.logger.error("WebSocket: Frame update message missing required fields.")
-        elif data["type"] == "session/focus":
-            self.focused = data["data"].get("focused", False)
-            self.logger.debug(f"WebSocket: Focus set to {self.focused}.")
+
+        elif data["type"] == "traffic_light/set_state":
+            light_id = data["data"].get("id")
+            new_state = data["data"].get("state")
+
+            if not light_id or not new_state:
+                self.logger.warning("Missing 'id' or 'state'")
+                return
+
+            from master.handler import handler
+            handler.send_traffic_light_state_command(light_id, new_state)
 
     async def send(self, message_type, data, dump_json=False):
         try:

@@ -44,6 +44,7 @@ def main(host, port):
         "traci/traffic_light/position": proxy("traffic_light/position"),
         "traci/vehicle/position": proxy("vehicle/position"),
         "traci/traffic_light/state": proxy("traffic_light/state"),
+        "controller/command/traffic_light/set_state": lambda client, message: handle_set_traffic_light_state(message),
         "claxon/command/get_init": lambda client, message: client.publish("controller/command/get_init", "{}"),
     }
     try:
@@ -68,3 +69,16 @@ def main(host, port):
             globalBroker.stop_paho()
         if specificBroker is not None:
             specificBroker.stop_paho()
+
+    def handle_set_traffic_light_state(message):
+        try:
+            payload = json.loads(message)
+            light_id = payload.get("id")
+            new_state = payload.get("state")
+            if light_id and new_state:
+                logger.info(f"Changing traffic light {light_id} to state {new_state}")
+                traci.trafficlight.setRedYellowGreenState(light_id, new_state)
+            else:
+                logger.warning("Invalid traffic light state command payload")
+        except Exception as e:
+            logger.error(f"Failed to handle traffic light state command: {e}")
