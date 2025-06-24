@@ -5,7 +5,7 @@ from paho.mqtt.client import Client
 import asyncio
 
 from master.websocket_server import broadcast_websocket_message
-
+mqtt_client = None
 logger = logging.getLogger(__name__)
 
 def publish_to_websocket(loop, message_type, data, dump_json=False):
@@ -36,6 +36,7 @@ SUBSCRIBER_TOPICS = {
 mqtt_client_instance = None
 
 def setup_mqtt_client(host, port, loop = None):
+    global mqtt_client
     """Configuration et démarrage du client MQTT."""
     global mqtt_client_instance
     client = Client(client_id="master", clean_session=False)
@@ -43,7 +44,7 @@ def setup_mqtt_client(host, port, loop = None):
     if loop is None:
         loop = asyncio.get_event_loop()
     client.enable_logger(logger)
-
+    mqtt_client = client
     def on_connect(client, userdata, flags, rc):
         logger.info(f"Connected to MQTT broker with result code {rc}")
         for topic in SUBSCRIBER_TOPICS.keys():
