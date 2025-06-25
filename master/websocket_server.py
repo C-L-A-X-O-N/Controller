@@ -21,6 +21,8 @@ async def handle_websocket_connection(websocket):
         add_session(session)
         while True:
             await session.tick()
+    except websockets.exceptions.ConnectionClosedError as e:
+        logger.warning(f"WebSocket: Connection closed with error: {e}")
     finally:
         if session != None:
             logger.info("WebSocket: Client Disconnected.")

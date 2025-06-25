@@ -19,11 +19,11 @@ class Handler:
         self.logger = logging.getLogger(__name__)
 
     def handle_vehicle_position(self, loop, data):
-        self.logger.debug(f"Handling vehicle position")
         vehicles = self.vehicleCache.getCached()
         with self.database.cursor() as cursor:
             vehiclesPresent = set()
             zone = data.get("zone", 0)
+            self.logger.info(f"Handling vehicle position for zone {zone}")
             for vehicle in data.get("data", []):
                 vehiclesPresent.add(vehicle['id'])
                 if vehicle['id'] not in vehicles:
@@ -96,14 +96,15 @@ class Handler:
                     }
 
             # Remove vehicles that are no longer present
-            for vehicle_id in list(vehicles.keys()):
-                if vehicle_id not in vehiclesPresent:
-                    cursor.execute(
-                        """
-                        DELETE FROM vehicles WHERE id = %s AND zone = %s
-                        """,
-                        (vehicle_id, zone)
-                    )
+            # Remove vehicles that are no longer present using a single SQL query
+            vehicles_to_remove = [vid for vid in vehicles.keys() if vid not in vehiclesPresent]
+            if vehicles_to_remove:
+                format_strings = ','.join(['%s'] * len(vehicles_to_remove))
+                cursor.execute(
+                    f"DELETE FROM vehicles WHERE id IN ({format_strings}) AND zone = %s",
+                    vehicles_to_remove + [zone]
+                )
+                for vehicle_id in vehicles_to_remove:
                     del vehicles[vehicle_id]
             self.database.commit()
             self.vehicleCache.setCached(vehicles)
@@ -111,7 +112,7 @@ class Handler:
         self.logger.debug("Vehicle positions updated in the database.")
 
     def handle_lane_position(self, loop, data):
-        self.logger.debug(f"Handling lane position data")
+        self.logger.info(f"Handling lane position data")
         # save/replace in the database
         def to_wkt_multilinestring(shape):
             if not isinstance(shape, list) or len(shape) < 2:
@@ -135,8 +136,8 @@ class Handler:
                 if lane['id'] not in lanes:
                     cursor.execute(
                         """
-                        INSERT INTO lanes (id, geom, priority, type, zone)
-                        VALUES (%s, ST_SetSRID(ST_GeomFromText(%s), 4326), %s, %s, %s)
+                        INSERT INTO lanes (id, geom, priority, type, zone, jam)
+                        VALUES (%s, ST_SetSRID(ST_GeomFromText(%s), 4326), %s, %s, %s, 0)
                         """,
                         # ON CONFLICT (id) DO UPDATE SET
                         #     geom = EXCLUDED.geom,
@@ -171,6 +172,7 @@ class Handler:
                     lanes[lane['id']] = lane
 
             self.database.commit()
+            logging.info(f"Updated {len(data['data'])} lanes in the database. ({len(lanes)} total lanes cached)")
             self.laneCache.setCached(lanes)
 
         self.logger.debug("Lane positions updated in the database.")
@@ -190,23 +192,26 @@ class Handler:
                 if lane['traffic_jam'] == lanes[lane['id']]['jam']:
                     # self.logger.debug(f"No change in traffic jam state for lane {lane['id']}, skipping update.")
                     continue
+                jam = lane.get('traffic_jam', 0)
+                if jam == None:
+                    jam = 0
                 cursor.execute(
                     """
                     UPDATE lanes SET jam = %s WHERE id = %s
                     """,
-                    (lane['traffic_jam'], lane['id'])
+                    (jam, lane['id'])
                 )
                 old = lanes[lane['id']]
                 if "shape" not in lane and "shape" in old:
                     lane['shape'] = old['shape']
-                lane['jam'] = lane['traffic_jam']
+                lane['jam'] = jam
                 lanes[lane['id']] = lane
                 newData.append(lane)
             self.database.commit()
             self.laneCache.setCached(lanes)
 
         self.logger.debug("Lane states updated in the database.")
-        trigger_lanes_update(loop, newData)
+        # trigger_lanes_update(loop, newData)
 
     def handle_lights_position(self, loop, data):
         self.logger.debug(f"Handling traffic light position data")

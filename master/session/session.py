@@ -5,15 +5,12 @@ from master.session.registry import remove_session
 from master.vehicle import getVehiclesIn, getVehicles
 
 class Session:
-    websocket = None
-    logger = None
-    minPos = [None, None]
-    maxPos = [None, None]
-    focused = False
-
     def __init__(self, websocket):
         self.websocket = websocket
         self.logger = logging.getLogger(__name__ + ":" + str(id(self)))
+        self.minPos = [None, None]
+        self.maxPos = [None, None]
+        self.focused = False
 
     async def init(self):
         await self.websocket.send(json.dumps({
@@ -69,8 +66,9 @@ class Session:
     def trigger_vehicle_update(self, loop):
         """Trigger an update for the vehicles in this session."""
         if not self.focused:
-            self.logger.debug("WebSocket: Session not focused, skipping vehicle update.")
+            self.logger.info("WebSocket: Session not focused, skipping vehicle update.")
             return
+        self.logger.info("WebSocket: Triggering vehicle update.")
         try:
             vehicles = []
             if self.minPos[0] is not None and self.maxPos[0] is not None:
@@ -85,20 +83,18 @@ class Session:
             self.logger.error(f"WebSocket: Failed to send vehicles update: {e}")
             remove_session(self)
         
-    def trigger_lane_update(self, loop, updatedData):
+    def trigger_lane_update(self, loop):
         """Trigger an update for the lanes in this session."""
         if not self.focused:
             # self.logger.warning("WebSocket: Session not focused, skipping lane update.")
             return
         try:
             dataToSend = []
-            for lane in updatedData:
-                if self.minPos[0] is not None and self.maxPos[0] is not None and "shape" in lane:
-                    # lane[shape] is a list of points [[long, lat], ...]
-                    shape = lane['shape']
-                    del lane['shape']
-                    if self.shape_bb_frame(shape):
-                        dataToSend.append(lane)
+            for lane in getLanesIn(self.minPos[0], self.minPos[1], self.maxPos[0], self.maxPos[1]):
+                dataToSend.append({
+                    "id": lane["id"],
+                    "state": lane["jam"]
+                })
             asyncio.run_coroutine_threadsafe(
                 self.send("lane/state", dataToSend, False),
                 loop
