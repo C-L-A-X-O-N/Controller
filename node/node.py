@@ -43,15 +43,19 @@ def publish_on_start(msg, client):
     }))
 
 globalBroker = None
-vehicle_buffer = {}
+emergency_buffer = {}
 
 def process_vehicle_positions(vehicles):
+    global emergency_buffer
     for v in vehicles:
-        vehicle_buffer[v["id"]] = v
+        if v["type"] == "emergency__emergency":
+            emergency_buffer[v["id"]] = v
+            logger.info(f"🚑 Véhicule d'urgence détecté: {v['id']} à {v['position']}")
 
 traffic_lights = {}
 
 def process_traffic_light_positions(lights):
+    global traffic_lights
     for light in lights:
         traffic_lights[light["id"]] = {
             "position": light["position"],
@@ -59,7 +63,7 @@ def process_traffic_light_positions(lights):
         }
 
 def main(host, port):
-    global globalBroker
+    global globalBroker, emergency_buffer
     """Main function to run the MQTT node client."""
 
     client = ToxiproxyAPI("http://toxiproxy:8474")
@@ -176,10 +180,7 @@ def main(host, port):
         )
 
         def detect_emergency_and_request_tls():
-            for v in vehicle_buffer.values():
-                logger.info(f"🛻 Vérif du véhicule {v['id']} type: {v['type']}")
-                if "emergency" not in v["type"]:
-                    continue
+            for v in emergency_buffer.values():
                 v_pos = v["position"]
                 v_id = v["id"]
                 closest_tls = None

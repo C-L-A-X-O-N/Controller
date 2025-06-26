@@ -290,8 +290,6 @@ class Handler:
 
             # Préparer les données d'accident
             accident_list = []
-            self.logger.info(f"Data structure received: {type(data)}")
-            self.logger.info(f"Data content: {data}")
             
             if isinstance(data.get("data"), dict) and "data" in data.get("data"):
                 accident_list = data.get("data").get("data", [])
@@ -314,7 +312,7 @@ class Handler:
             # Supprimer uniquement les accidents qui n'existent plus
             accidents_to_remove = existing_accident_ids - current_accident_ids
             if accidents_to_remove:
-                self.logger.info(f"Removing {len(accidents_to_remove)} accidents that are no longer present")
+                self.logger.debug(f"Removing {len(accidents_to_remove)} accidents that are no longer present")
                 format_strings = ','.join(['%s'] * len(accidents_to_remove))
                 cursor.execute(
                     f"DELETE FROM accidents WHERE vehicle_id IN ({format_strings}) AND zone = %s",
@@ -323,7 +321,7 @@ class Handler:
             
             # Insère ou met à jour les données d'accident
             for accident in accident_list:
-                logging.info(f"Processing accident {accident.get('id', 'unknown')}")
+                self.logger.debug(f"Processing accident {accident.get('id', 'unknown')}")
 
                 if not isinstance(accident, dict):
                     self.logger.error(f"Invalid accident data format: {accident}")
