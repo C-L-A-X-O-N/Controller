@@ -38,7 +38,7 @@ class MqttClient:
             self.logger.info("Connected to MQTT broker successfully")
             for topic in self.subscribes.keys():
                 self.logger.info("Subscribed to topic " + topic)
-                client.subscribe(topic)
+                client.subscribe(topic, qos=1)
         else:
             self.logger.error(f"Failed to connect to MQTT broker, return code {rc}")
         if self._on_connect:

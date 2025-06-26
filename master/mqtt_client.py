@@ -41,7 +41,7 @@ def setup_mqtt_client(host, port, loop = None):
     def on_connect(client, userdata, flags, rc):
         logger.info(f"Connected to MQTT broker with result code {rc}")
         for topic in SUBSCRIBER_TOPICS.keys():
-            client.subscribe(topic)
+            client.subscribe(topic, qos=1)
 
         client.publish("claxon/command/first_data", "")
 

@@ -20,83 +20,74 @@ class Handler:
 
     def handle_vehicle_position(self, loop, data):
         vehicles = self.vehicleCache.getCached()
+        zone = data.get("zone", 0)
+        self.logger.info(f"Handling vehicle position for zone {zone}")
+        
+        # Track vehicles in the current data
+        vehiclesPresent = set()
+        
+        # Prepare batch operations
+        vehicles_to_upsert = []
+        
+        # Process all vehicles first without database operations
+        for vehicle in data.get("data", []):
+            vehicle_id = vehicle['id']
+            vehiclesPresent.add(vehicle_id)
+            
+            # Extract position and other properties
+            lat, lon = vehicle['position'][1], vehicle['position'][0]
+            v_type = vehicle.get('type')
+            angle = vehicle.get('angle')
+            speed = vehicle.get('speed')
+            accident = vehicle.get('accident', False)
+            
+            # Check if vehicle exists and if data has changed
+            if (vehicle_id not in vehicles or 
+                vehicles[vehicle_id]['position'] != [lat, lon] or
+                vehicles[vehicle_id]['type'] != v_type or
+                vehicles[vehicle_id]['angle'] != angle or
+                vehicles[vehicle_id]['speed'] != speed or
+                vehicles[vehicle_id]['accident'] != accident):
+                
+                # Queue for upsert
+                vehicles_to_upsert.append((
+                    vehicle_id, lat, lon, v_type, angle, speed, accident, zone
+                ))
+                
+                # Update cache
+                vehicles[vehicle_id] = {
+                    "id": vehicle_id,
+                    "position": [lat, lon],
+                    "type": v_type,
+                    "angle": angle,
+                    "speed": speed,
+                    "accident": accident,
+                    "zone": zone
+                }
+        
+        # Execute database operations in batches
         with self.database.cursor() as cursor:
-            vehiclesPresent = set()
-            zone = data.get("zone", 0)
-            self.logger.info(f"Handling vehicle position for zone {zone}")
-            for vehicle in data.get("data", []):
-                vehiclesPresent.add(vehicle['id'])
-                if vehicle['id'] not in vehicles:
-                    cursor.execute(
-                        """
-                        INSERT INTO vehicles (id, geom, type, angle, speed, accident, zone)
-                        VALUES (%s, ST_SetSRID(ST_MakePoint(%s, %s), 4326), %s, %s, %s, %s, %s)
-                        ON CONFLICT (id) DO UPDATE SET
-                            geom = EXCLUDED.geom,
-                            type = EXCLUDED.type,
-                            angle = EXCLUDED.angle,
-                            speed = EXCLUDED.speed,
-                            accident = EXCLUDED.accident,
-                            zone = EXCLUDED.zone
-                        """,
-                        (
-                            vehicle['id'],
-                            vehicle['position'][1],  # latitude
-                            vehicle['position'][0],  # longitude
-                            vehicle.get('type'),
-                            vehicle.get('angle'),
-                            vehicle.get('speed'),
-                            vehicle.get('accident', False),
-                            data.get("zone", 0)
-                        )
-                    )
-                    vehicles[vehicle['id']] = {
-                        "id": vehicle['id'],
-                        "position": [vehicle['position'][1], vehicle['position'][0]],
-                        "type": vehicle.get('type'),
-                        "angle": vehicle.get('angle'),
-                        "speed": vehicle.get('speed'),
-                        "accident": vehicle.get('accident', False),
-                        "zone": data.get("zone", 0)
-                    }
-                else:
-                    # Check if the vehicle position has changed
-                    old_vehicle = vehicles[vehicle['id']]
-                    if (old_vehicle['position'] == [vehicle['position'][1], vehicle['position'][0]] and
-                        old_vehicle['type'] == vehicle.get('type') and
-                        old_vehicle['angle'] == vehicle.get('angle') and
-                        old_vehicle['speed'] == vehicle.get('speed') and
-                        old_vehicle['accident'] == vehicle.get('accident', False)):
-                        # self.logger.debug(f"No change in vehicle {vehicle['id']}, skipping update.")
-                        continue
-                    
-                    cursor.execute(
-                        """
-                        UPDATE vehicles SET geom = ST_SetSRID(ST_MakePoint(%s, %s), 4326), type = %s, angle = %s, speed = %s, accident = %s, zone = %s WHERE id = %s
-                        """,
-                        (
-                            vehicle['position'][1],  # latitude
-                            vehicle['position'][0],  # longitude
-                            vehicle.get('type'),
-                            vehicle.get('angle'),
-                            vehicle.get('speed'),
-                            vehicle.get('accident', False),
-                            data.get("zone", 0),
-                            vehicle['id']
-                        )
-                    )
-                    vehicles[vehicle['id']] = {
-                        "id": vehicle['id'],
-                        "position": [vehicle['position'][1], vehicle['position'][0]],
-                        "type": vehicle.get('type'),
-                        "angle": vehicle.get('angle'),
-                        "speed": vehicle.get('speed'),
-                        "accident": vehicle.get('accident', False),
-                        "zone": data.get("zone", 0)
-                    }
-
+            # Batch upsert
+            if vehicles_to_upsert:
+                args_str = ','.join(
+                    cursor.mogrify("(%s, ST_SetSRID(ST_MakePoint(%s, %s), 4326), %s, %s, %s, %s, %s)", x).decode('utf-8')
+                    for x in vehicles_to_upsert
+                )
+                cursor.execute(
+                    f"""
+                    INSERT INTO vehicles (id, geom, type, angle, speed, accident, zone)
+                    VALUES {args_str}
+                    ON CONFLICT (id) DO UPDATE SET
+                        geom = EXCLUDED.geom,
+                        type = EXCLUDED.type,
+                        angle = EXCLUDED.angle,
+                        speed = EXCLUDED.speed,
+                        accident = EXCLUDED.accident,
+                        zone = EXCLUDED.zone
+                    """
+                )
+            
             # Remove vehicles that are no longer present
-            # Remove vehicles that are no longer present using a single SQL query
             vehicles_to_remove = [vid for vid in vehicles.keys() if vid not in vehiclesPresent]
             if vehicles_to_remove:
                 format_strings = ','.join(['%s'] * len(vehicles_to_remove))
@@ -106,77 +97,90 @@ class Handler:
                 )
                 for vehicle_id in vehicles_to_remove:
                     del vehicles[vehicle_id]
+                    
             self.database.commit()
             self.vehicleCache.setCached(vehicles)
 
-        self.logger.debug("Vehicle positions updated in the database.")
+        self.logger.debug(f"Vehicle positions updated: {len(vehicles_to_upsert)} upserted, {len(vehicles_to_remove) if 'vehicles_to_remove' in locals() else 0} removed")
 
     def handle_lane_position(self, loop, data):
         self.logger.info(f"Handling lane position data")
-        # save/replace in the database
+        lanes = self.laneCache.getCached()
+        
+        # Define WKT conversion function
         def to_wkt_multilinestring(shape):
             if not isinstance(shape, list) or len(shape) < 2:
-                return None  # Trop court pour faire une ligne
-
+                return None
             try:
                 points = ", ".join(f"{float(pt[1])} {float(pt[0])}" for pt in shape)
                 return f"MULTILINESTRING(({points}))"
             except (TypeError, ValueError, IndexError):
                 return None
-
-        lanes = self.laneCache.getCached()
-        with self.database.cursor() as cursor:
-            for lane in data["data"]:
-                lane['jam'] = 0
+        
+        # Prepare batch operations
+        lanes_to_insert = []
+        lanes_to_update = []
+        
+        # Process all lanes first without database operations
+        for lane in data["data"]:
+            lane['jam'] = 0
+            lane_id = lane['id']
+            
+            # Only convert shape to WKT if needed
+            if lane_id not in lanes or lanes[lane_id].get('shape') != lane['shape']:
                 wkt_shape = to_wkt_multilinestring(lane['shape'])
                 if wkt_shape == "MULTILINESTRING(())":
-                    continue 
-
-
-                if lane['id'] not in lanes:
-                    cursor.execute(
-                        """
-                        INSERT INTO lanes (id, geom, priority, type, zone, jam)
-                        VALUES (%s, ST_SetSRID(ST_GeomFromText(%s), 4326), %s, %s, %s, 0)
-                        """,
-                        # ON CONFLICT (id) DO UPDATE SET
-                        #     geom = EXCLUDED.geom,
-                        #     priority = EXCLUDED.priority,
-                        #     type = EXCLUDED.type
-                        # """,
-                        (
-                            lane['id'],
-                            wkt_shape,
-                            lane.get('priority', 0),
-                            lane.get('type'),
-                            data.get("zone", 0)
-                        )
-                    )
-                    lanes[lane['id']] = lane
+                    continue
+                    
+                if lane_id not in lanes:
+                    # Queue for insertion
+                    lanes_to_insert.append((
+                        lane_id,
+                        wkt_shape,
+                        lane.get('priority', 0),
+                        lane.get('type'),
+                        data.get("zone", 0)
+                    ))
+                    lanes[lane_id] = lane
                 else:
-                    # check if the lane shape has changed
-                    if "shape" in lanes[lane['id']] and lanes[lane['id']]['shape'] == lane['shape']:
-                        # self.logger.debug(f"No change in lane {lane['id']}, skipping update.")
-                        continue
-                    cursor.execute(
-                        """
-                        UPDATE lanes SET geom = ST_SetSRID(ST_GeomFromText(%s), 4326), priority = %s, type = %s WHERE id = %s
-                        """,
-                        (
-                            wkt_shape,
-                            lane.get('priority', 0),
-                            lane.get('type'),
-                            lane['id']
-                        )
-                    )
-                    lanes[lane['id']] = lane
-
+                    # Queue for update
+                    lanes_to_update.append((
+                        wkt_shape,
+                        lane.get('priority', 0),
+                        lane.get('type'),
+                        lane_id
+                    ))
+                    lanes[lane_id] = lane
+        
+        # Execute database operations in batches
+        with self.database.cursor() as cursor:
+            # Batch insert
+            if lanes_to_insert:
+                args_str = ','.join(cursor.mogrify("(%s, ST_SetSRID(ST_GeomFromText(%s), 4326), %s, %s, %s, 0)", x).decode('utf-8') 
+                                   for x in lanes_to_insert)
+                cursor.execute(
+                    f"""
+                    INSERT INTO lanes (id, geom, priority, type, zone, jam)
+                    VALUES {args_str}
+                    """
+                )
+            
+            # Batch update using executemany
+            if lanes_to_update:
+                cursor.executemany(
+                    """
+                    UPDATE lanes SET geom = ST_SetSRID(ST_GeomFromText(%s), 4326), 
+                    priority = %s, type = %s WHERE id = %s
+                    """,
+                    lanes_to_update
+                )
+                
             self.database.commit()
-            logging.info(f"Updated {len(data['data'])} lanes in the database. ({len(lanes)} total lanes cached)")
-            self.laneCache.setCached(lanes)
-
-        self.logger.debug("Lane positions updated in the database.")
-
+        
+        logging.info(f"Updated {len(lanes_to_insert) + len(lanes_to_update)} lanes in the database. ({len(lanes)} total lanes cached)")
+        self.laneCache.setCached(lanes)
+        self.logger.info("Lane positions updated in the database.")
+        
         trigger_lanes_position(loop)
 
     def handle_lane_state(self, loop, data):

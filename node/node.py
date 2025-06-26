@@ -20,7 +20,10 @@ def publish_on_start(msg, client):
         "zone": os.environ.get("ZONE", 2),
     }))
 
+globalBroker = None
+
 def main(host, port):
+    global globalBroker
     """Main function to run the MQTT node client."""
 
     # Setup signal handlers for graceful shutdown
@@ -33,7 +36,6 @@ def main(host, port):
     signal.signal(signal.SIGINT, signal_handler)
     signal.signal(signal.SIGTERM, signal_handler)
 
-    globalBroker = None
     specificBroker = None
 
     def proxy(topic):
@@ -62,6 +64,7 @@ def main(host, port):
             "claxon/command/first_data": lambda message, client: globalBroker.publish("traci/first_data", "{}"),
             "traci/start": publish_on_start
         }, on_connect=on_connect)
+        globalBroker.publish("traci/first_data", "")
         specificBroker = MqttClient(
             host=os.environ.get("PERSONNAL_BROKER_HOST", "localhost"),
             port=int(os.environ.get("PERSONNAL_BROKER_PORT", 1883)),
