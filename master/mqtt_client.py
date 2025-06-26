@@ -20,6 +20,7 @@ def handle_traci_step(loop):
     for session in s:
         session.trigger_vehicle_update(loop)
         session.trigger_lane_update(loop)
+        session.trigger_accidents_update(loop)
     logger.info("All sessions updated with new vehicle and lane data.")
 
 SUBSCRIBER_TOPICS = {
@@ -28,6 +29,7 @@ SUBSCRIBER_TOPICS = {
     "claxon/traffic_light/position": lambda client, loop, msg: master.handler.handler.handle_lights_position(loop, json.loads(msg)),
     "claxon/traffic_light/state": lambda client, loop, msg: master.handler.handler.handle_lights_state(loop, json.loads(msg)),
     "claxon/vehicle/position": lambda client, loop, msg: master.handler.handler.handle_vehicle_position(loop, json.loads(msg)),
+    "claxon/accident/position": lambda client, loop, msg: master.handler.handler.handle_accidents(loop, json.loads(msg)),
     "traci/step": lambda client, loop, msg: handle_traci_step(loop),
 }
 

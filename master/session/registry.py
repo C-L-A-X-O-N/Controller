@@ -59,3 +59,15 @@ def trigger_lanes_position(loop):
         except Exception as e:
             session.logger.error(f"Failed to send lanes position: {e}")
             remove_session(session)
+
+def trigger_accidents_update(loop):
+    """Trigger an update for accidents for all sessions."""
+    global sessions
+    logger.debug("Triggering accidents update for all sessions.")
+    sess = sessions.copy()  # Create a copy to avoid modifying the set during iteration
+    for session in sess:
+        try:
+            session.trigger_accidents_update(loop)
+        except Exception as e:
+            session.logger.error(f"Failed to send accidents update: {e}")
+            remove_session(session)

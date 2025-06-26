@@ -63,6 +63,7 @@ def main(host, port):
         "traci/traffic_light/position": proxy("traffic_light/position"),
         "traci/vehicle/position": proxy("vehicle/position"),
         "traci/traffic_light/state": proxy("traffic_light/state"),
+        "traci/accident/position": proxy("accident/position"),
     }
     try:
         time.sleep(5)  # Wait for the network to stabilize
