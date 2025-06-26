@@ -5,15 +5,12 @@ from master.session.registry import remove_session
 from master.vehicle import getVehiclesIn, getVehicles
 
 class Session:
-    websocket = None
-    logger = None
-    minPos = [None, None]
-    maxPos = [None, None]
-    focused = False
-
     def __init__(self, websocket):
         self.websocket = websocket
         self.logger = logging.getLogger(__name__ + ":" + str(id(self)))
+        self.minPos = [None, None]
+        self.maxPos = [None, None]
+        self.focused = False
 
     async def init(self):
         await self.websocket.send(json.dumps({
@@ -24,11 +21,27 @@ class Session:
         self.logger.info("WebSocket: Client Connected.")
 
     async def tick(self):
-        message = await self.websocket.recv()
-        data = json.loads(message)
-        if "type" not in data or "data" not in data:
-            self.logger.error("WebSocket: Invalid message format received.")
-            return
+        try:
+            message = await asyncio.wait_for(self.websocket.recv(), timeout=60.0)  # Timeout après 60 secondes
+            try:
+                data = json.loads(message)
+                if "type" not in data or "data" not in data:
+                    self.logger.error("WebSocket: Invalid message format received.")
+                    return
+            except json.JSONDecodeError:
+                self.logger.error(f"WebSocket: Invalid JSON received: {message}")
+                return
+        except asyncio.TimeoutError:
+            self.logger.debug("WebSocket: Timeout waiting for message, sending ping.")
+            try:
+                # Envoyer un ping pour vérifier si la connexion est toujours active
+                pong_waiter = await self.websocket.ping()
+                await asyncio.wait_for(pong_waiter, timeout=10.0)
+                return  # La connexion est toujours bonne, continuer
+            except Exception:
+                # Si le ping échoue, lever une exception pour fermer la connexion
+                self.logger.warning("WebSocket: Ping failed, closing connection.")
+                raise websockets.exceptions.ConnectionClosedError(1000, "Ping timeout")
         
         if data["type"] == "session/frame_update":
             if "minX" in data["data"] and "minY" in data["data"] and "maxX" in data["data"] and "maxY" in data["data"]:
@@ -56,18 +69,47 @@ class Session:
             
             from master.mqtt_client import mqtt_publish_traffic_light_next_phase
             mqtt_publish_traffic_light_next_phase({"id": light_id})
+        elif data["type"] == "session/update_accidents":
+            loop = asyncio.get_event_loop()
+            self.trigger_accidents_update(loop)
 
     async def send(self, message_type, data, dump_json=False):
         try:
             if dump_json:
-                data = json.loads(data)
-            await self.websocket.send(json.dumps({
+                try:
+                    data = json.loads(data)
+                except json.JSONDecodeError as e:
+                    self.logger.error(f"WebSocket: Failed to parse JSON for dump_json=True: {e}")
+                    return False
+                    
+            message = {
                 "type": message_type,
                 "data": data
-            }))
-        except websockets.ConnectionClosed:
+            }
+            
+            try:
+                json_message = json.dumps(message)
+            except (TypeError, ValueError) as e:
+                self.logger.error(f"WebSocket: Failed to serialize message to JSON: {e}")
+                return False
+                
+            try:
+                await asyncio.wait_for(
+                    self.websocket.send(json_message), 
+                    timeout=5.0  # Timeout pour l'envoi
+                )
+                return True
+            except asyncio.TimeoutError:
+                self.logger.warning("WebSocket: Timeout when sending message.")
+                raise websockets.exceptions.ConnectionClosedError(1001, "Send timeout")
+                
+        except websockets.exceptions.ConnectionClosed:
             self.logger.warning("WebSocket: Connection closed while trying to send message.")
             remove_session(self)
+            return False
+        except Exception as e:
+            self.logger.error(f"WebSocket: Error sending message: {e}")
+            return False
 
     def set_frame(self, minX, minY, maxX, maxY):
         self.minPos = [minX, minY]
@@ -77,8 +119,9 @@ class Session:
     def trigger_vehicle_update(self, loop):
         """Trigger an update for the vehicles in this session."""
         if not self.focused:
-            self.logger.debug("WebSocket: Session not focused, skipping vehicle update.")
+            self.logger.info("WebSocket: Session not focused, skipping vehicle update.")
             return
+        self.logger.info("WebSocket: Triggering vehicle update.")
         try:
             vehicles = []
             if self.minPos[0] is not None and self.maxPos[0] is not None:
@@ -93,20 +136,18 @@ class Session:
             self.logger.error(f"WebSocket: Failed to send vehicles update: {e}")
             remove_session(self)
         
-    def trigger_lane_update(self, loop, updatedData):
+    def trigger_lane_update(self, loop):
         """Trigger an update for the lanes in this session."""
         if not self.focused:
             # self.logger.warning("WebSocket: Session not focused, skipping lane update.")
             return
         try:
             dataToSend = []
-            for lane in updatedData:
-                if self.minPos[0] is not None and self.maxPos[0] is not None and "shape" in lane:
-                    # lane[shape] is a list of points [[long, lat], ...]
-                    shape = lane['shape']
-                    del lane['shape']
-                    if self.shape_bb_frame(shape):
-                        dataToSend.append(lane)
+            for lane in getLanesIn(self.minPos[0], self.minPos[1], self.maxPos[0], self.maxPos[1]):
+                dataToSend.append({
+                    "id": lane["id"],
+                    "state": lane["jam"]
+                })
             asyncio.run_coroutine_threadsafe(
                 self.send("lane/state", dataToSend, False),
                 loop
@@ -145,6 +186,57 @@ class Session:
             self.logger.error(f"WebSocket: Failed to send vehicles update: {e}")
             remove_session(self)
 
+    def trigger_accidents_update(self, loop):
+        """Trigger an update for accidents in this session."""
+        if not self.focused:
+            self.logger.debug("WebSocket: Session not focused, skipping accidents update.")
+            return
+        try:
+            # Récupérer les accidents de la base de données
+            from master.database import connect_to_database
+            db = connect_to_database()
+            with db.cursor() as cursor:
+                cursor.execute(
+                    """
+                    SELECT vehicle_id as id,
+                           ST_X(geom) as longitude,
+                           ST_Y(geom) as latitude,
+                           type,
+                           start_time, zone, duration
+                    FROM accidents
+                    """,
+                )
+
+                accidents = []
+                for row in cursor.fetchall():
+                    # Déterminer si nous avons une colonne duration dans les résultats
+                    if len(row) >= 7:  # Avec duration
+                        accident_data = {
+                            "id": row[0],
+                            "position": [row[2], row[1]],  # [latitude, longitude]
+                            "type": row[3],
+                            "start_time": row[4],
+                            "zone": row[5],
+                            "duration": row[6]
+                        }
+                    else:  # Sans duration
+                        accident_data = {
+                            "id": row[0],
+                            "position": [row[2], row[1]],  # [latitude, longitude]
+                            "type": row[3],
+                            "start_time": row[4],
+                            "zone": row[5],
+                            "duration": 10  # Valeur par défaut
+                        }
+                    accidents.append(accident_data)
+
+            asyncio.run_coroutine_threadsafe(
+                self.send("accident/position", accidents, False),
+                loop
+            )
+        except Exception as e:
+            self.logger.error(f"WebSocket: Failed to send accidents update: {e}")
+            remove_session(self)
 
     def shape_bb_frame(self, shape):
         """Check if the shape is within the bounding box frame."""

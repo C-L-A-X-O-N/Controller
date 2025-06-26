@@ -20,11 +20,31 @@ async def handle_websocket_connection(websocket):
         await session.init()
         add_session(session)
         while True:
-            await session.tick()
+            try:
+                await session.tick()
+            except websockets.exceptions.ConnectionClosedError as e:
+                logger.warning(f"WebSocket: Connection closed with error: {e}")
+                break
+            except websockets.exceptions.ConnectionClosedOK:
+                logger.info("WebSocket: Connection closed normally.")
+                break
+            except asyncio.CancelledError:
+                logger.info("WebSocket: Connection cancelled.")
+                break
+            except Exception as e:
+                logger.error(f"WebSocket: Error in session tick: {e}")
+                break
+    except websockets.exceptions.ConnectionClosedError as e:
+        logger.warning(f"WebSocket: Connection closed with error during setup: {e}")
+    except Exception as e:
+        logger.error(f"WebSocket: Error in connection handler: {e}")
     finally:
-        if session != None:
+        if session is not None:
             logger.info("WebSocket: Client Disconnected.")
-            remove_session(session)
+            try:
+                remove_session(session)
+            except Exception as e:
+                logger.error(f"WebSocket: Error removing session: {e}")
 
 
 async def start_websocket_server():
