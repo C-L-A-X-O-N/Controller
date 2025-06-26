@@ -21,9 +21,13 @@ SUBSCRIBER_TOPICS = {
     "claxon/vehicle/position": lambda client, loop, msg: master.handler.handler.handle_vehicle_position(loop, json.loads(msg)),
 }
 
+mqtt_client_instance = None
+
 def setup_mqtt_client(host, port, loop = None):
     """Configuration et démarrage du client MQTT."""
+    global mqtt_client_instance
     client = Client(client_id="master", clean_session=False)
+    mqtt_client_instance = client
     if loop is None:
         loop = asyncio.get_event_loop()
     client.enable_logger(logger)
@@ -53,3 +57,17 @@ def close_mqtt_client(client):
     client.loop_stop()
     client.disconnect()
     logger.info("MQTT client disconnected.")
+
+def mqtt_publish_traffic_light_state(data: dict):
+    """Publie le nouvel état d’un feu tricolore via MQTT vers le node."""
+    try:
+        global mqtt_client_instance
+        if mqtt_client_instance:
+            topic = "claxon/command/traffic_light/update"
+            payload = json.dumps(data)
+            mqtt_client_instance.publish(topic, payload)
+            logger.info(f"Published traffic_light state to MQTT: {payload}")
+        else:
+            logger.warning("MQTT client not initialized")
+    except Exception as e:
+        logger.error(f"Error publishing traffic_light state: {e}")

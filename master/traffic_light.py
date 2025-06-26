@@ -52,6 +52,26 @@ def getTrafficLightIn(minX, minY, maxX, maxY):
             })
     return lightsFormatted
 
+def get_traffic_light_by_id(light_id: str):
+    db = connect_to_database()
+    with db.cursor() as cursor:
+        cursor.execute("""
+            SELECT id, in_lane, out_lane, via_lane, ST_Y(geom) AS lat, ST_X(geom) AS lon, state
+            FROM traffic_lights WHERE id = %s;
+        """, (light_id,))
+        row = cursor.fetchone()
+        if row:
+            return {
+                "id": row[0],
+                "in_lane": row[1],
+                "out_lane": row[2],
+                "via_lane": row[3],
+                "stop_lat": row[4],
+                "stop_lon": row[5],
+                "state": row[6]
+            }
+        return None
+
 def getTrafficLightIndexed():
     lights = getTrafficLight()
     lightsIndexed = {}
