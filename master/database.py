@@ -15,20 +15,58 @@ db = None
 
 def connect_to_database():
     global db
-    if db is not None:
-        logger.debug("Using existing database connection.")
-        return db
     """Connexion à la base de données."""
-    logger.debug("Attempting to connect to the database with config: %s", DB_CONFIG)
+    
+    # Check if connection is closed or None and reconnect if needed
+    if db is None or db.closed:
+        logger.debug("Attempting to connect to the database with config: %s", DB_CONFIG)
+        try:
+            logger.info("Connecting to database...")
+            db = psycopg2.connect(**DB_CONFIG)
+            db.autocommit = True
+            logger.info("Database connection established successfully.")
+        except Exception as e:
+            logger.error(f"Database connection failed: {e}")
+    else:
+        logger.debug("Using existing database connection.")
+        
+    # Test the connection to ensure it's still active
     try:
-        logger.info("Connecting to database...")
-        db = psycopg2.connect(**DB_CONFIG)
-        db.autocommit = True
-        logger.info("Database connection established successfully.")
-        return db
-    except Exception as e:
-        logger.error(f"Database connection failed: {e}")
-        raise
+        with db.cursor() as test_cursor:
+            test_cursor.execute("SELECT 1")
+    except (psycopg2.InterfaceError, psycopg2.OperationalError) as e:
+        logger.warning(f"Database connection test failed: {e}. Reconnecting...")
+        try:
+            db = psycopg2.connect(**DB_CONFIG)
+            db.autocommit = True
+            logger.info("Database reconnection successful.")
+        except Exception as e:
+            logger.error(f"Database reconnection failed: {e}")
+            
+    return db
+
+def setup_database():
+    """Initialisation de la base de données."""
+    global db
+    db = connect_to_database()
+    return db
+
+def get_active_connection():
+    """Returns an active database connection, reconnecting if necessary."""
+    global db
+    # Force a reconnection if the connection is closed or None
+    if db is None or db.closed:
+        db = connect_to_database()
+    
+    # Test the connection
+    try:
+        with db.cursor() as cursor:
+            cursor.execute("SELECT 1")
+    except (psycopg2.InterfaceError, psycopg2.OperationalError) as e:
+        logger.warning(f"Inactive database connection: {e}. Reconnecting...")
+        db = connect_to_database()
+    
+    return db
 
 def setup_database():
     """Initialisation de la base de données."""
@@ -72,6 +110,20 @@ def setup_database():
                 state VARCHAR(255) NOT NULL DEFAULT ''
             )            
         """)
+
+        cursor.execute(
+                """
+                CREATE TABLE IF NOT EXISTS accidents (
+                    vehicle_id TEXT PRIMARY KEY,
+                    geom GEOMETRY(Point, 4326),
+                    type TEXT,
+                    start_time INTEGER,
+                    zone INTEGER,
+                    duration INTEGER DEFAULT 10,
+                    timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+                """
+            )
         
         connection.commit()
         logger.info("Database setup completed successfully.")

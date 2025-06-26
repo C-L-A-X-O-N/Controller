@@ -1,10 +1,10 @@
-from .database import connect_to_database
+from .database import connect_to_database, get_active_connection
 from .mqtt_client import publish_to_websocket
 from .lane import getLanesIndexed, LaneCache
 from .vehicle import VehicleCache
 from .traffic_light import getTrafficLightIndexed
 import logging, json
-from .session.registry import trigger_vehicles_update, trigger_lanes_update, trigger_lanes_position
+from .session.registry import trigger_vehicles_update, trigger_lanes_update, trigger_lanes_position, trigger_accidents_update
 
 class Handler:
     database = None
@@ -279,10 +279,87 @@ class Handler:
 
         self.logger.debug("Traffic light states updated in the database.")
 
+    def handle_accidents(self, loop, data):
+        """Traite les données relatives aux accidents."""
+
+        current_step = data.get("current_step", 0)
+        zone = data.get("zone", 0)
+
+        self.database = get_active_connection()
+        with self.database.cursor() as cursor:
+
+            # Préparer les données d'accident
+            accident_list = []
+            self.logger.info(f"Data structure received: {type(data)}")
+            self.logger.info(f"Data content: {data}")
+            
+            if isinstance(data.get("data"), dict) and "data" in data.get("data"):
+                accident_list = data.get("data").get("data", [])
+                zone = data.get("data").get("zone", zone)
+                current_step = data.get("data").get("current_step", current_step)
+            else:
+                logging.debug("Probleme format accident")
+            
+            cursor.execute(
+                """
+                SELECT vehicle_id FROM accidents WHERE zone = %s
+                """,
+                (zone,)
+            )
+            existing_accident_ids = {row[0] for row in cursor.fetchall()}
+
+            # Créer un ensemble des IDs d'accidents reçus
+            current_accident_ids = {accident['id'] for accident in accident_list if isinstance(accident, dict)}
+            
+            # Supprimer uniquement les accidents qui n'existent plus
+            accidents_to_remove = existing_accident_ids - current_accident_ids
+            if accidents_to_remove:
+                self.logger.info(f"Removing {len(accidents_to_remove)} accidents that are no longer present")
+                format_strings = ','.join(['%s'] * len(accidents_to_remove))
+                cursor.execute(
+                    f"DELETE FROM accidents WHERE vehicle_id IN ({format_strings}) AND zone = %s",
+                    list(accidents_to_remove) + [zone]
+                )
+            
+            # Insère ou met à jour les données d'accident
+            for accident in accident_list:
+                logging.info(f"Processing accident {accident.get('id', 'unknown')}")
+
+                if not isinstance(accident, dict):
+                    self.logger.error(f"Invalid accident data format: {accident}")
+                    continue
+
+                try:
+                    cursor.execute(
+                        """
+                        INSERT INTO accidents (vehicle_id, geom, type, start_time, zone, duration)
+                        VALUES (%s, ST_SetSRID(ST_MakePoint(%s, %s), 4326), %s, %s, %s, %s)
+                        ON CONFLICT (vehicle_id) DO UPDATE SET
+                            geom = EXCLUDED.geom,
+                            type = EXCLUDED.type,
+                            start_time = EXCLUDED.start_time,
+                            duration = EXCLUDED.duration
+                        """,
+                        (
+                            accident['id'],
+                            accident['position'][1],  # latitude
+                            accident['position'][0],  # longitude
+                            accident.get('type'),
+                            accident.get('start_time', 0),
+                            zone,
+                            accident.get('duration', 10)
+                        )
+                    )
+                except Exception as e:
+                    self.logger.error(f"Error inserting accident data: {e}, data: {accident}")
+            
+            self.database.commit()
+
 handler = None
 
 def setup_handler():
     global handler
     if handler is None:
         handler = Handler()
+        
     return handler
