@@ -48,44 +48,14 @@ class Session:
         elif data["type"] == "session/update_lights":
             loop = asyncio.get_event_loop()
             self.trigger_lights_update(loop)
-        elif data["type"] == "command/traffic_light/update":
+        elif data["type"] == "command/traffic_light/next_phase":
             light_id = data["data"].get("id")
-            new_state = data["data"].get("state")
-
-            if light_id is not None and new_state is not None:
-
-                from master.traffic_light import get_traffic_light_by_id
-                from master.mqtt_client import mqtt_publish_traffic_light_state
-                current_light = get_traffic_light_by_id(light_id)
+            if not light_id:
                 
-                if current_light is None:
-                    self.logger.warning(f"Traffic light {light_id} not found in DB.")
-                    return
-                
-                current_state = current_light.get("state")
-
-                def to_numeric_state(val):
-                    if isinstance(val, int):
-                        return val
-                    if val in ("G", "g"):
-                        return 0
-                    elif val in ("Y", "y", "O", "o"):
-                        return 1
-                    elif val in ("R", "r"):
-                        return 2
-                    return 3
-                
-                if to_numeric_state(current_state) == to_numeric_state(new_state):
-                    self.logger.info(f"No update needed for light {light_id}, state unchanged.")
-                    return
-                self.logger.info(f"Updated traffic light state via MQTT current: {current_light}")
-                self.logger.info(f"Updated traffic light state via MQTT newlight : {new_state}")
- 
-                payload = {
-                    "id": light_id,
-                    "state": new_state
-                }
-                mqtt_publish_traffic_light_state(payload)
+                return
+            
+            from master.mqtt_client import mqtt_publish_traffic_light_next_phase
+            mqtt_publish_traffic_light_next_phase({"id": light_id})
 
     async def send(self, message_type, data, dump_json=False):
         try:

@@ -58,16 +58,16 @@ def close_mqtt_client(client):
     client.disconnect()
     logger.info("MQTT client disconnected.")
 
-def mqtt_publish_traffic_light_state(data: dict):
-    """Publie le nouvel état d’un feu tricolore via MQTT vers le node."""
+def mqtt_publish_traffic_light_next_phase(data: dict):
+    """Publie la demande de passage à la phase suivante."""
     try:
         global mqtt_client_instance
         if mqtt_client_instance:
-            topic = "claxon/command/traffic_light/update"
+            topic = "claxon/command/traffic_light/next_phase"
             payload = json.dumps(data)
             mqtt_client_instance.publish(topic, payload)
-            logger.info(f"Published traffic_light state to MQTT: {payload}")
+            logger.info(f"Published next_phase to MQTT: {payload}")
         else:
             logger.warning("MQTT client not initialized")
     except Exception as e:
-        logger.error(f"Error publishing traffic_light state: {e}")
+        logger.error(f"Error publishing next_phase: {e}")
