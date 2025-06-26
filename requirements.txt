@@ -1,4 +1,4 @@
 paho-mqtt
 psycopg2-binary
 websockets
-chaostoolkit-toxiproxy
+toxiproxy-python
